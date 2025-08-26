@@ -1,0 +1,9 @@
+# Activar el motor de reescritura
+RewriteEngine On
+
+# Ignorar las reescrituras para archivos y directorios existentes
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+
+# Redirigir todas las solicitudes a /api/... hacia api/index.php
+RewriteRule ^api/(.*)$ api/index.php?/$1 [L]

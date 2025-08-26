@@ -1,0 +1,8 @@
+# Composer dependencies
+/vendor/
+
+# Log files
+*.log
+
+# Local environment configuration
+.env
