@@ -1,0 +1,721 @@
+<!DOCTYPE html>
+<html lang="es" data-theme="light">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Autotech ERP — Taller Automotriz</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+<style>
+:root{
+  --bg: #0f172a;           /* slate-900 */
+  --panel: #111827;        /* gray-900 */
+  --panel-2:#0b1220;
+  --text: #e5e7eb;         /* gray-200 */
+  --muted:#9ca3af;         /* gray-400 */
+  --brand:#2dd4bf;         /* teal-400 */
+  --brand-2:#22c55e;       /* green-500 */
+  --danger:#ef4444;
+  --warn:#f59e0b;
+  --ok:#10b981;
+  --card:#0b1328;
+  --stroke:#1f2937;
+  --chip:#111827;
+  --shadow: 0 10px 30px rgba(0,0,0,.35);
+  --radius: 14px;
+  --radius-sm: 10px;
+}
+:root[data-theme="light"]{
+  --bg: #f4f6fb;
+  --panel: #ffffff;
+  --panel-2:#f8fafc;
+  --text:#0f172a;
+  --muted:#6b7280;
+  --brand:#2563eb;         /* blue-600 */
+  --brand-2:#7c3aed;       /* violet-600 */
+  --card:#ffffff;
+  --stroke:#e5e7eb;
+  --chip:#f1f5f9;
+  --shadow: 0 10px 30px rgba(2,6,23,.08);
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{
+  margin:0; font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial;
+  color:var(--text); background:linear-gradient(180deg,var(--bg),var(--panel-2) 60%);
+}
+
+/* Layout */
+.app{
+  display:grid; grid-template-columns: 280px 1fr; grid-template-rows: 72px 1fr;
+  grid-template-areas: "sidebar topbar" "sidebar main"; min-height:100dvh;
+}
+.sidebar{
+  grid-area:sidebar; position:sticky; top:0; height:100dvh; padding:22px 16px;
+  background:linear-gradient(180deg,rgba(255,255,255,.06),transparent), var(--panel);
+  border-right:1px solid var(--stroke);
+}
+.topbar{
+  grid-area:topbar; display:flex; align-items:center; gap:12px; padding:14px 18px;
+  position:sticky; top:0; backdrop-filter:saturate(180%) blur(8px);
+  background:linear-gradient(180deg,rgba(255,255,255,.35),rgba(255,255,255,0)) ;
+  border-bottom:1px solid var(--stroke);
+}
+main{ grid-area:main; padding:22px; }
+
+/* Sidebar */
+.brand{
+  display:flex; align-items:center; gap:12px; font-weight:800; letter-spacing:.2px; margin-bottom:18px;
+}
+.brand .logo{
+  width:40px; height:40px; display:grid; place-items:center; border-radius:12px;
+  background: radial-gradient(120px 60px at -10% -20%, var(--brand-2), transparent 60%),
+              radial-gradient(120px 60px at 120% 120%, var(--brand), transparent 60%),
+              linear-gradient(140deg, var(--panel-2), var(--panel));
+  color:white; box-shadow: var(--shadow); border:1px solid var(--stroke);
+}
+.nav{display:flex; flex-direction:column; gap:6px; margin-top:8px;}
+.nav a{
+  display:flex; align-items:center; gap:12px; padding:12px 12px; border-radius:12px;
+  color:var(--text); text-decoration:none; border:1px solid transparent;
+}
+.nav a.active, .nav a:hover{
+  background:linear-gradient(180deg, var(--chip), transparent 70%);
+  border-color: var(--stroke);
+}
+.nav .icon{width:20px; height:20px; opacity:.9}
+
+/* Topbar */
+.search{
+  display:flex; align-items:center; gap:10px; padding:10px 12px; border:1px solid var(--stroke);
+  background:var(--panel); color:var(--muted); border-radius:12px; min-width:320px; flex:1;
+}
+.search input{all:unset; color:var(--text); width:100%;}
+.kbd{
+  font-size:12px; padding:2px 6px; border:1px solid var(--stroke); border-radius:6px; background:var(--chip); color:var(--muted);
+}
+.actions{display:flex; align-items:center; gap:10px; margin-left:auto;}
+.btn{
+  display:inline-flex; align-items:center; gap:8px; padding:10px 14px; border:1px solid var(--stroke);
+  background:var(--panel); color:var(--text); border-radius:10px; cursor:pointer;
+}
+.btn.primary{ background: linear-gradient(180deg,var(--brand),var(--brand-2)); color:white; border-color:transparent; }
+.btn.ghost:hover{ background:var(--chip); }
+.avatar{width:34px; height:34px; border-radius:50%; border:1px solid var(--stroke); background:linear-gradient(180deg,var(--chip),transparent)}
+
+/* Cards & grids */
+.grid{ display:grid; gap:16px; }
+.kpi{ background:var(--card); border:1px solid var(--stroke); border-radius:var(--radius); padding:18px; box-shadow:var(--shadow)}
+.kpi h4{ margin:0 0 6px; font-weight:700; }
+.kpi .trend{font-size:12px; color:var(--muted)}
+.kpi .value{ font-size:28px; font-weight:800; letter-spacing:.2px; }
+.row-3{ grid-template-columns: repeat(3, minmax(0,1fr)); }
+.row-2{ grid-template-columns: repeat(2, minmax(0,1fr)); }
+
+/* Panels */
+.panel{
+  background:var(--panel); border:1px solid var(--stroke); border-radius:var(--radius); box-shadow:var(--shadow);
+}
+.panel header{
+  padding:14px 16px; display:flex; align-items:center; gap:10px; border-bottom:1px solid var(--stroke);
+}
+.panel header h3{ margin:0; font-weight:800; font-size:16px; }
+.panel .body{ padding:16px; }
+
+/* Tables */
+.table{ width:100%; border-collapse:collapse;}
+.table th, .table td{ padding:10px 12px; border-bottom:1px solid var(--stroke); text-align:left; }
+.table th{ font-size:12px; color:var(--muted); font-weight:600; letter-spacing:.3px; text-transform:uppercase; }
+.table tr:hover td{ background:linear-gradient(180deg,var(--chip),transparent); }
+
+/* Form */
+.form-grid{ display:grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap:12px; }
+.field{ display:flex; flex-direction:column; gap:6px; }
+.field label{ font-size:12px; color:var(--muted); font-weight:600; text-transform:uppercase; letter-spacing:.3px; }
+.input, select, textarea{
+  padding:10px 12px; border:1px solid var(--stroke); background:var(--panel-2);
+  border-radius:10px; color:var(--text); outline:none;
+}
+.input:focus, select:focus, textarea:focus{ border-color: var(--brand); box-shadow:0 0 0 4px color-mix(in srgb, var(--brand) 20%, transparent); }
+
+/* Items table */
+.items{ width:100%; border-collapse:collapse; margin-top:10px; }
+.items th, .items td{ border-bottom:1px solid var(--stroke); padding:8px; }
+.items th{ font-size:12px; color:var(--muted); text-transform:uppercase; letter-spacing:.3px; }
+.items input{ width:100%; }
+.row-actions .mini{ padding:6px 8px; font-size:12px; border-radius:8px; border:1px solid var(--stroke); background:var(--chip); cursor:pointer }
+.badge{font-size:12px; padding:4px 8px; background:var(--chip); border:1px solid var(--stroke); border-radius:999px; color:var(--muted)}
+
+/* Totals */
+.totals{ display:grid; grid-template-columns: 1fr 360px; gap:16px; align-items:start; }
+.tot-card{ background:var(--card); border:1px solid var(--stroke); border-radius:12px; padding:14px; }
+.tot-row{ display:flex; justify-content:space-between; margin:6px 0; color:var(--muted); }
+.tot-row strong{ color:var(--text) }
+.tot-grand{ display:flex; justify-content:space-between; margin-top:10px; font-size:22px; font-weight:800; }
+
+/* Modal */
+.modal-backdrop{
+  position:fixed; inset:0; background:rgba(2,6,23,.55); display:none; place-items:center; padding:20px; z-index:60;
+}
+.modal{ background:var(--panel); border:1px solid var(--stroke); border-radius:16px; width:min(920px, 96vw); box-shadow:var(--shadow); }
+.modal header{ padding:14px 16px; border-bottom:1px solid var(--stroke); display:flex; align-items:center; justify-content:space-between }
+.modal .content{ padding:16px; }
+.modal .footer{ padding:12px 16px; border-top:1px solid var(--stroke); display:flex; justify-content:flex-end; gap:10px }
+
+/* Utilities */
+.hidden{display:none !important}
+.right{margin-left:auto}
+hr.sep{border:0; border-top:1px dashed var(--stroke); margin:8px 0}
+small.help{color:var(--muted)}
+/* Responsive */
+@media (max-width: 1100px){
+  .app{ grid-template-columns: 88px 1fr; }
+  .sidebar .label{ display:none; }
+  .row-3{ grid-template-columns: 1fr; }
+  .row-2{ grid-template-columns: 1fr; }
+  .form-grid{ grid-template-columns: repeat(2, minmax(0,1fr)); }
+  .totals{ grid-template-columns: 1fr; }
+}
+@media print {
+  .sidebar,.topbar,.no-print{ display:none !important; }
+  main{ padding:0 }
+  body{ background:white }
+  .panel, .kpi, .tot-card{ box-shadow:none; border:1px solid #cbd5e1 }
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="logo" aria-hidden="true">
+        <!-- Inline SVG logo -->
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+          <path d="M3 17l3.5-6L10 17h11" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          <circle cx="7" cy="18.5" r="2.5" fill="white"/>
+          <circle cx="20.5" cy="18.5" r="2.5" fill="white"/>
+        </svg>
+      </div>
+      <span>Autotech ERP</span>
+    </div>
+    <nav class="nav">
+      <a href="#" class="active" data-page="dashboard">
+        <svg class="icon" viewBox="0 0 24 24" fill="none"><path d="M3 13h8V3H3v10zm0 8h8v-6H3v6zm10 0h8V11h-8v10zm0-18v6h8V3h-8z" stroke="currentColor" stroke-width="1.5"/></svg>
+        <span class="label">Dashboard</span>
+      </a>
+      <a href="#" data-page="quotes">
+        <svg class="icon" viewBox="0 0 24 24" fill="none"><path d="M4 6h16M4 12h10M4 18h8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><rect x="3" y="4" width="18" height="16" rx="3" stroke="currentColor" stroke-width="1.5"/></svg>
+        <span class="label">Cotizaciones</span>
+      </a>
+      <a href="#" data-page="workorders">
+        <svg class="icon" viewBox="0 0 24 24" fill="none"><path d="M4 7h16M4 12h16M4 17h10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="M7 3h10a2 2 0 0 1 2 2v14l-4-3-4 3-4-3-4 3V5a2 2 0 0 1 2-2z" stroke="currentColor" stroke-width="1.5"/></svg>
+        <span class="label">Órdenes</span>
+      </a>
+      <a href="#" data-page="clients">
+        <svg class="icon" viewBox="0 0 24 24" fill="none"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" stroke="currentColor" stroke-width="1.5"/><circle cx="12" cy="7" r="4" stroke="currentColor" stroke-width="1.5"/></svg>
+        <span class="label">Clientes</span>
+      </a>
+      <a href="#" data-page="vehicles">
+        <svg class="icon" viewBox="0 0 24 24" fill="none"><path d="M3 13l2-6h14l2 6" stroke="currentColor" stroke-width="1.5"/><circle cx="7" cy="17" r="2.5" stroke="currentColor" stroke-width="1.5"/><circle cx="17" cy="17" r="2.5" stroke="currentColor" stroke-width="1.5"/></svg>
+        <span class="label">Vehículos</span>
+      </a>
+      <a href="#" data-page="inventory">
+        <svg class="icon" viewBox="0 0 24 24" fill="none"><path d="M3 7l9-4 9 4-9 4-9-4z" stroke="currentColor" stroke-width="1.5"/><path d="M3 7v10l9 4 9-4V7" stroke="currentColor" stroke-width="1.5"/></svg>
+        <span class="label">Inventario</span>
+      </a>
+      <a href="#" data-page="reports">
+        <svg class="icon" viewBox="0 0 24 24" fill="none"><path d="M4 19h16M8 17V7M12 17V5M16 17v-6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+        <span class="label">Reportes</span>
+      </a>
+      <hr class="sep">
+      <a href="#" id="toggleTheme">
+        <svg class="icon" viewBox="0 0 24 24" fill="none"><path d="M12 3v2m0 14v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M3 12h2m14 0h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+        <span class="label">Tema</span>
+      </a>
+    </nav>
+  </aside>
+
+  <!-- Topbar -->
+  <header class="topbar">
+    <div class="search" role="search">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="1.5"/><path d="M21 21l-3.5-3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+      <input type="search" id="globalSearch" placeholder="Buscar cliente, placa, VIN, cotización…" />
+      <span class="kbd">/</span>
+    </div>
+    <div class="actions">
+      <button class="btn ghost no-print" id="newQuoteBtn">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+        Nueva cotización
+      </button>
+      <button class="btn primary no-print" id="exportDemo">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M12 16V4m0 12l-4-4m4 4l4-4M5 20h14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+        Exportar PDF (demo)
+      </button>
+      <img class="avatar" alt="Usuario" src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='34' height='34'><rect width='34' height='34' rx='17' fill='%23ddd'/></svg>"/>
+    </div>
+  </header>
+
+  <!-- Main -->
+  <main>
+    <!-- DASHBOARD -->
+    <section id="page-dashboard">
+      <div class="grid row-3">
+        <div class="kpi">
+          <h4>Ingresos mes</h4>
+          <div class="value" id="kpiIngresos">$0</div>
+          <div class="trend">+12.4% vs. mes anterior</div>
+        </div>
+        <div class="kpi">
+          <h4>Órdenes activas</h4>
+          <div class="value" id="kpiOrdenes">0</div>
+          <div class="trend"><span class="badge">Taller</span> Aforo 65%</div>
+        </div>
+        <div class="kpi">
+          <h4>Índice de retorno</h4>
+          <div class="value">1.8%</div>
+          <div class="trend">Objetivo &lt; 3%</div>
+        </div>
+      </div>
+
+      <div class="grid row-2" style="margin-top:16px">
+        <div class="panel">
+          <header><h3>Últimas cotizaciones</h3></header>
+          <div class="body">
+            <table class="table" id="quotesTable">
+              <thead>
+                <tr><th>Folio</th><th>Cliente</th><th>Vehículo</th><th>Fecha</th><th>Total</th><th>Estatus</th></tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="panel">
+          <header><h3>Alertas de inventario</h3></header>
+          <div class="body" id="inventoryAlerts">
+            <div class="badge">Sin alertas por ahora</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- COTIZACIONES -->
+    <section id="page-quotes" class="hidden">
+      <div class="panel">
+        <header>
+          <h3>Generador de Cotizaciones</h3>
+          <div class="right">
+            <button class="btn ghost no-print" id="btnSelectClient">Seleccionar cliente</button>
+            <button class="btn ghost no-print" id="btnSelectVehicle">Seleccionar vehículo</button>
+          </div>
+        </header>
+        <div class="body">
+          <div class="form-grid">
+            <div class="field"><label>Folio</label><input class="input" id="qFolio" placeholder="AUT-0001"/></div>
+            <div class="field"><label>Fecha</label><input class="input" id="qFecha" type="date"/></div>
+            <div class="field"><label>Validez (días)</label><input class="input" id="qValidez" type="number" value="7"/></div>
+            <div class="field"><label>Moneda</label>
+              <select id="qMoneda">
+                <option value="MXN">MXN</option>
+                <option value="USD">USD</option>
+              </select>
+            </div>
+
+            <div class="field"><label>Cliente</label><input class="input" id="qCliente" placeholder="Nombre / Razón Social" /></div>
+            <div class="field"><label>RFC</label><input class="input" id="qRFC" placeholder="RFC"/></div>
+            <div class="field"><label>Correo</label><input class="input" id="qEmail" type="email" placeholder="correo@cliente.com" /></div>
+            <div class="field"><label>Teléfono</label><input class="input" id="qPhone" placeholder="+52 ..."/></div>
+
+            <div class="field"><label>Vehículo</label><input class="input" id="qVehiculo" placeholder="Marca Modelo Año"/></div>
+            <div class="field"><label>Placas</label><input class="input" id="qPlacas" placeholder="XYZ-123-A"/></div>
+            <div class="field"><label>VIN</label><input class="input" id="qVIN" placeholder="17 caracteres"/></div>
+            <div class="field"><label>KM</label><input class="input" id="qKM" type="number" placeholder="Kilometraje"/></div>
+          </div>
+
+          <hr class="sep">
+          <div class="row" style="display:flex; gap:10px; flex-wrap:wrap; align-items:center">
+            <span class="badge">Items de cotización</span>
+            <button class="btn ghost no-print" id="addItemBtn">+ Agregar</button>
+            <small class="help">Usa <strong>Refacciones</strong> o <strong>Mano de Obra</strong>. Aplica descuento por renglón si lo necesitas.</small>
+          </div>
+
+          <table class="items" id="itemsTable" aria-label="Tabla de conceptos">
+            <thead>
+              <tr>
+                <th style="width:120px">Tipo</th>
+                <th>Descripción</th>
+                <th style="width:100px">Cant.</th>
+                <th style="width:140px">P. Unit.</th>
+                <th style="width:110px">Desc. %</th>
+                <th style="width:120px">IVA</th>
+                <th style="width:140px">Importe</th>
+                <th style="width:70px" class="no-print">Acción</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+
+          <div class="totals" style="margin-top:16px">
+            <div class="notes">
+              <div class="field">
+                <label>Notas / Alcance</label>
+                <textarea id="qNotas" rows="5" placeholder="Vigencia 7 días. Precios sujetos a cambio sin previo aviso. No incluye piezas no listadas, etc."></textarea>
+              </div>
+              <div class="field">
+                <label>Condiciones</label>
+                <textarea id="qCond" rows="3" placeholder="50% anticipo en refacciones. Saldo contra entrega. Garantía 90 días mano de obra."></textarea>
+              </div>
+            </div>
+            <div class="tot-card">
+              <div class="tot-row"><span>Subtotal</span><strong id="tSubtotal">$0.00</strong></div>
+              <div class="tot-row"><span>Descuento</span><strong id="tDescuento">$0.00</strong></div>
+              <div class="tot-row"><span>IVA 16%</span><strong id="tIVA">$0.00</strong></div>
+              <hr class="sep">
+              <div class="tot-grand"><span>Total</span><span id="tTotal">$0.00</span></div>
+              <div style="display:flex; gap:8px; margin-top:12px" class="no-print">
+                <button class="btn ghost" id="saveQuote">Guardar</button>
+                <button class="btn primary" id="postBackend">Enviar a backend (POST)</button>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </section>
+
+    <!-- PLACEHOLDER PAGES -->
+    <section id="page-workorders" class="hidden">
+      <div class="panel"><header><h3>Órdenes de Trabajo</h3></header><div class="body"><span class="badge">Próxima etapa:</span> convertir cotización → OT, checklist de recepción, fotos, estatus, y mano de obra por técnico.</div></div>
+    </section>
+    <section id="page-clients" class="hidden">
+      <div class="panel"><header><h3>Clientes</h3></header><div class="body" id="clientsBody"></div></div>
+    </section>
+    <section id="page-vehicles" class="hidden">
+      <div class="panel"><header><h3>Vehículos</h3></header><div class="body" id="vehiclesBody"></div></div>
+    </section>
+    <section id="page-inventory" class="hidden">
+      <div class="panel"><header><h3>Inventario</h3></header><div class="body">Mínimos/Máximos, equivalencias OEM/Aftermarket, costos, márgenes, alertas.</div></div>
+    </section>
+    <section id="page-reports" class="hidden">
+      <div class="panel"><header><h3>Reportes</h3></header><div class="body">Ventas por categoría, productividad por técnico, rotación de inventario, retención de clientes.</div></div>
+    </section>
+  </main>
+</div>
+
+<!-- MODAL: Selección de cliente -->
+<div class="modal-backdrop" id="modalClient">
+  <div class="modal">
+    <header>
+      <strong>Seleccionar cliente</strong>
+      <button class="btn ghost" onclick="closeModal('modalClient')">Cerrar</button>
+    </header>
+    <div class="content">
+      <input class="input" id="clientSearch" placeholder="Buscar cliente…" />
+      <table class="table" id="clientsTable">
+        <thead><tr><th>Nombre</th><th>Correo</th><th>Teléfono</th><th></th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <div class="footer">
+      <button class="btn ghost" onclick="closeModal('modalClient')">Cancelar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: Selección de vehículo -->
+<div class="modal-backdrop" id="modalVehicle">
+  <div class="modal">
+    <header>
+      <strong>Seleccionar vehículo</strong>
+      <button class="btn ghost" onclick="closeModal('modalVehicle')">Cerrar</button>
+    </header>
+    <div class="content">
+      <input class="input" id="vehicleSearch" placeholder="Buscar por placas, VIN o modelo…" />
+      <table class="table" id="vehiclesTable">
+        <thead><tr><th>Vehículo</th><th>Placas</th><th>VIN</th><th></th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <div class="footer">
+      <button class="btn ghost" onclick="closeModal('modalVehicle')">Cancelar</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ---------- Utilities ---------- */
+const $ = sel => document.querySelector(sel);
+const $$ = sel => Array.from(document.querySelectorAll(sel));
+const money = (n, currency='MXN') => new Intl.NumberFormat('es-MX', {style:'currency', currency}).format(Number(n||0));
+const todayISO = () => new Date().toISOString().slice(0,10);
+const byId = id => document.getElementById(id);
+
+/* ---------- Navigation ---------- */
+$$('.nav a').forEach(a=>{
+  a.addEventListener('click', e=>{
+    e.preventDefault();
+    $$('.nav a').forEach(n=>n.classList.remove('active'));
+    a.classList.add('active');
+    const page = a.dataset.page;
+    $$('main > section').forEach(s=>s.classList.add('hidden'));
+    byId('page-' + page).classList.remove('hidden');
+  });
+});
+
+/* ---------- Theme toggle ---------- */
+byId('toggleTheme').addEventListener('click', ()=>{
+  const root = document.documentElement;
+  root.dataset.theme = (root.dataset.theme === 'light' ? 'dark' : 'light');
+});
+
+/* ---------- Keyboard: global search focus ---------- */
+document.addEventListener('keydown', (e)=>{
+  if(e.key === '/'){ e.preventDefault(); byId('globalSearch').focus(); }
+});
+
+/* ---------- Demo Data ---------- */
+const demoClients = [
+  {name:'Juan Pérez', email:'juan@cliente.com', phone:'+52 444 123 4567', rfc:'PEPJ8001019Q8'},
+  {name:'Transportes MX SA de CV', email:'compras@transportes.com', phone:'+52 55 5555 5555', rfc:'TMX200101ABC'},
+  {name:'María López', email:'maria@gmail.com', phone:'+52 81 1234 5678', rfc:'LOMA900101H20'}
+];
+const demoVehicles = [
+  {veh:'Nissan Versa 2019', plate:'XBC-329-A', vin:'3N1CN7AD4KL123456', km: 54432},
+  {veh:'Toyota Hilux 2021', plate:'WLK-77-22', vin:'MR0KB3CD8M0123456', km: 81200},
+  {veh:'VW Jetta 2017', plate:'UYY-902-B', vin:'3VW267AJ3HM123456', km: 120322}
+];
+const demoQuotes = [
+  {folio:'AUT-0005', client:'Transportes MX', veh:'Hilux 2021', date:'2025-08-21', total: 18750.55, status:'Enviada'},
+  {folio:'AUT-0004', client:'Juan Pérez', veh:'Versa 2019', date:'2025-08-20', total: 4820.00, status:'Aceptada'},
+  {folio:'AUT-0003', client:'María López', veh:'Jetta 2017', date:'2025-08-18', total: 9320.70, status:'Vencida'}
+];
+
+/* ---------- Dashboard binds ---------- */
+function loadDashboard(){
+  const tbody = byId('quotesTable').querySelector('tbody');
+  tbody.innerHTML = demoQuotes.map(q=>`
+    <tr>
+      <td>${q.folio}</td>
+      <td>${q.client}</td>
+      <td>${q.veh}</td>
+      <td>${q.date}</td>
+      <td>${money(q.total)}</td>
+      <td><span class="badge">${q.status}</span></td>
+    </tr>
+  `).join('');
+  byId('kpiIngresos').textContent = money(demoQuotes.reduce((s,q)=>s+q.total,0));
+  byId('kpiOrdenes').textContent = '8';
+}
+loadDashboard();
+
+/* ---------- Clients & Vehicles modals ---------- */
+function openModal(id){ byId(id).style.display='grid'; }
+function closeModal(id){ byId(id).style.display='none'; }
+
+byId('btnSelectClient').addEventListener('click', ()=>{
+  const tbody = byId('clientsTable').querySelector('tbody');
+  tbody.innerHTML = demoClients.map((c,i)=>`
+    <tr>
+      <td>${c.name}</td><td>${c.email}</td><td>${c.phone}</td>
+      <td><button class="btn ghost mini" data-idx="${i}" onclick="selectClient(${i})">Elegir</button></td>
+    </tr>
+  `).join('');
+  openModal('modalClient');
+});
+window.selectClient = (i)=>{
+  const c = demoClients[i];
+  byId('qCliente').value = c.name;
+  byId('qEmail').value = c.email;
+  byId('qPhone').value = c.phone;
+  byId('qRFC').value = c.rfc || '';
+  closeModal('modalClient');
+}
+
+byId('btnSelectVehicle').addEventListener('click', ()=>{
+  const tbody = byId('vehiclesTable').querySelector('tbody');
+  tbody.innerHTML = demoVehicles.map((v,i)=>`
+    <tr>
+      <td>${v.veh}</td><td>${v.plate}</td><td>${v.vin}</td>
+      <td><button class="btn ghost mini" onclick="selectVehicle(${i})">Elegir</button></td>
+    </tr>
+  `).join('');
+  openModal('modalVehicle');
+});
+window.selectVehicle = (i)=>{
+  const v = demoVehicles[i];
+  byId('qVehiculo').value = v.veh;
+  byId('qPlacas').value = v.plate;
+  byId('qVIN').value = v.vin;
+  byId('qKM').value = v.km;
+  closeModal('modalVehicle');
+}
+
+/* ---------- Quotes page init ---------- */
+function initQuoteForm(){
+  byId('qFecha').value = todayISO();
+  if(!byId('qFolio').value) byId('qFolio').value = nextFolio();
+  addItem({type:'Refacción', desc:'Filtro de aceite', qty:1, price:220, disc:0, iva:true});
+  addItem({type:'Mano de Obra', desc:'Servicio menor', qty:1, price:850, disc:0, iva:true});
+  recalcTotals();
+}
+function nextFolio(){
+  const n = Number(localStorage.getItem('folioSeq') || '5') + 1;
+  localStorage.setItem('folioSeq', String(n));
+  return `AUT-${String(n).padStart(4,'0')}`;
+}
+
+/* ---------- Items table ---------- */
+const tbodyItems = byId('itemsTable').querySelector('tbody');
+function addItem(pref={}){
+  const row = document.createElement('tr');
+  row.innerHTML = `
+    <td>
+      <select class="item-type">
+        <option${pref.type==='Refacción'?' selected':''}>Refacción</option>
+        <option${pref.type==='Mano de Obra'?' selected':''}>Mano de Obra</option>
+      </select>
+    </td>
+    <td><input class="input item-desc" placeholder="Descripción" value="${pref.desc||''}"></td>
+    <td><input class="input item-qty" type="number" min="0" step="0.01" value="${pref.qty??1}"></td>
+    <td><input class="input item-price" type="number" min="0" step="0.01" value="${pref.price??0}"></td>
+    <td><input class="input item-disc" type="number" min="0" max="100" step="0.1" value="${pref.disc??0}"></td>
+    <td>
+      <select class="item-iva">
+        <option value="16"${pref.iva!==false?' selected':''}>IVA 16%</option>
+        <option value="0"${pref.iva===false?' selected':''}>Exento</option>
+      </select>
+    </td>
+    <td class="item-total" style="text-align:right">${money(0)}</td>
+    <td class="row-actions no-print" style="text-align:center">
+      <button class="mini" onclick="dupRow(this)">Duplicar</button>
+      <button class="mini" onclick="delRow(this)">Eliminar</button>
+    </td>
+  `;
+  tbodyItems.appendChild(row);
+  row.querySelectorAll('input,select').forEach(el=>el.addEventListener('input', recalcTotals));
+  recalcTotals();
+}
+function rowData(tr){
+  return {
+    type: tr.querySelector('.item-type').value,
+    desc: tr.querySelector('.item-desc').value.trim(),
+    qty: Number(tr.querySelector('.item-qty').value)||0,
+    price: Number(tr.querySelector('.item-price').value)||0,
+    disc: Number(tr.querySelector('.item-disc').value)||0,
+    ivaRate: Number(tr.querySelector('.item-iva').value)||0
+  };
+}
+function calcRow(r){
+  const gross = r.qty * r.price;
+  const discVal = gross * (r.disc/100);
+  const net = Math.max(0, gross - discVal);
+  const iva = net * (r.ivaRate/100);
+  const total = net + iva;
+  return {gross, discVal, net, iva, total};
+}
+function recalcTotals(){
+  let subtotal=0, discTotal=0, ivaTotal=0, grand=0;
+  $$('#itemsTable tbody tr').forEach(tr=>{
+    const d = rowData(tr);
+    const c = calcRow(d);
+    subtotal += d.qty * d.price;
+    discTotal += c.discVal;
+    ivaTotal += c.iva;
+    grand += c.total;
+    tr.querySelector('.item-total').textContent = money(c.total, byId('qMoneda').value);
+  });
+  byId('tSubtotal').textContent = money(subtotal, byId('qMoneda').value);
+  byId('tDescuento').textContent = money(discTotal, byId('qMoneda').value);
+  byId('tIVA').textContent = money(ivaTotal, byId('qMoneda').value);
+  byId('tTotal').textContent = money(grand, byId('qMoneda').value);
+}
+window.dupRow = (btn)=>{ const tr = btn.closest('tr'); const d = rowData(tr); addItem({ ...d, iva: d.ivaRate!==0 }); }
+window.delRow = (btn)=>{ const tr = btn.closest('tr'); tr.remove(); recalcTotals(); }
+
+byId('addItemBtn').addEventListener('click', ()=> addItem({}));
+
+/* ---------- Save / POST ---------- */
+byId('saveQuote').addEventListener('click', ()=>{
+  const data = collectQuoteData();
+  const key = `quote:${data.folio}`;
+  localStorage.setItem(key, JSON.stringify(data));
+  alert('Cotización guardada localmente: ' + key);
+  // Add to dashboard demo list
+  demoQuotes.unshift({folio:data.folio, client:data.cliente, veh:data.vehiculo, date:data.fecha, total:data.totales.total, status:'Borrador'});
+  loadDashboard();
+});
+
+byId('postBackend').addEventListener('click', async ()=>{
+  const data = collectQuoteData();
+  try{
+    const res = await fetch('/api/generar_pdf.php', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(data)
+    });
+    if(!res.ok) throw new Error('HTTP ' + res.status);
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `${data.folio}.pdf`; a.click();
+    URL.revokeObjectURL(url);
+  }catch(err){
+    console.error(err);
+    alert('No se pudo contactar el backend. Revisa /api/generar_pdf.php');
+  }
+});
+
+/* ---------- Export demo (Print CSS) ---------- */
+byId('exportDemo').addEventListener('click', ()=> {
+  // Switch to quotes page if not there, to print the content
+  $$('.nav a').forEach(n=>n.classList.remove('active'));
+  $$('main > section').forEach(s=>s.classList.add('hidden'));
+  $('[data-page="quotes"]').classList.add('active');
+  byId('page-quotes').classList.remove('hidden');
+  window.print();
+});
+
+/* ---------- Collect form ---------- */
+function collectQuoteData(){
+  const items = $$('#itemsTable tbody tr').map(tr=>{
+    const d = rowData(tr); const c = calcRow(d);
+    return { ...d, ...c };
+  });
+  const tot = {
+    subtotal: items.reduce((s,i)=>s+i.qty*i.price,0),
+    descuento: items.reduce((s,i)=>s+i.discVal,0),
+    iva: items.reduce((s,i)=>s+i.iva,0),
+    total: items.reduce((s,i)=>s+i.total,0)
+  };
+  return {
+    folio: byId('qFolio').value || nextFolio(),
+    fecha: byId('qFecha').value || todayISO(),
+    validez: Number(byId('qValidez').value)||7,
+    moneda: byId('qMoneda').value,
+    cliente: byId('qCliente').value,
+    rfc: byId('qRFC').value,
+    email: byId('qEmail').value,
+    telefono: byId('qPhone').value,
+    vehiculo: byId('qVehiculo').value,
+    placas: byId('qPlacas').value,
+    vin: byId('qVIN').value,
+    km: byId('qKM').value,
+    notas: byId('qNotas').value,
+    condiciones: byId('qCond').value,
+    items, totales: tot
+  };
+}
+
+/* ---------- Route helpers ---------- */
+byId('newQuoteBtn').addEventListener('click', ()=>{
+  $$('.nav a').forEach(n=>n.classList.remove('active'));
+  $('[data-page="quotes"]').classList.add('active');
+  $$('main > section').forEach(s=>s.classList.add('hidden'));
+  byId('page-quotes').classList.remove('hidden');
+});
+
+/* ---------- Init ---------- */
+initQuoteForm();
+</script>
+</body>
+</html>
