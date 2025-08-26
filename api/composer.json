@@ -1,0 +1,16 @@
+{
+    "name": "jules/autotech-erp-api",
+    "description": "Backend API for the Autotech ERP system.",
+    "type": "project",
+    "require": {
+        "php": ">=7.4",
+        "firebase/php-jwt": "^6.3",
+        "dompdf/dompdf": "^2.0"
+    },
+    "authors": [
+        {
+            "name": "Jules",
+            "role": "Developer"
+        }
+    ]
+}
