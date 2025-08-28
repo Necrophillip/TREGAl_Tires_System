@@ -3,8 +3,9 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Autotech ERP — Taller Automotriz</title>
+<title>TREGAL Tires — Centro de Servicio</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
 <style>
 :root{
@@ -190,14 +191,17 @@ small.help{color:var(--muted)}
   <aside class="sidebar">
     <div class="brand">
       <div class="logo" aria-hidden="true">
-        <!-- Inline SVG logo -->
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
-          <path d="M3 17l3.5-6L10 17h11" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-          <circle cx="7" cy="18.5" r="2.5" fill="white"/>
-          <circle cx="20.5" cy="18.5" r="2.5" fill="white"/>
+        <!-- TREGAL Tires Logo -->
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10"></circle>
+          <circle cx="12" cy="12" r="4"></circle>
+          <line x1="22" y1="12" x2="18" y2="12"></line>
+          <line x1="6" y1="12" x2="2" y2="12"></line>
+          <line x1="12" y1="2" x2="12" y2="6"></line>
+          <line x1="12" y1="18" x2="12" y2="22"></line>
         </svg>
       </div>
-      <span>Autotech ERP</span>
+      <span>TREGAL Tires</span>
     </div>
     <nav class="nav">
       <a href="#" class="active" data-page="dashboard">
@@ -227,6 +231,10 @@ small.help{color:var(--muted)}
       <a href="#" data-page="reports">
         <svg class="icon" viewBox="0 0 24 24" fill="none"><path d="M4 19h16M8 17V7M12 17V5M16 17v-6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
         <span class="label">Reportes</span>
+      </a>
+      <a href="#" data-page="payrolls">
+        <svg class="icon" viewBox="0 0 24 24" fill="none"><path stroke="currentColor" stroke-width="1.5" d="M17 9.5a.5.5 0 01.5-.5h1a.5.5 0 01.5.5v5a.5.5 0 01-.5.5h-1a.5.5 0 01-.5-.5v-5zM14 9.5a.5.5 0 01.5-.5h1a.5.5 0 01.5.5v5a.5.5 0 01-.5.5h-1a.5.5 0 01-.5-.5v-5zM3 8a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V8zm5 1.5a.5.5 0 01.5-.5h1a.5.5 0 01.5.5v5a.5.5 0 01-.5-.5h-1a.5.5 0 01-.5-.5v-5z"></path></svg>
+        <span class="label">Nóminas</span>
       </a>
       <hr class="sep">
       <a href="#" id="toggleTheme">
@@ -388,16 +396,171 @@ small.help{color:var(--muted)}
       <div class="panel"><header><h3>Órdenes de Trabajo</h3></header><div class="body"><span class="badge">Próxima etapa:</span> convertir cotización → OT, checklist de recepción, fotos, estatus, y mano de obra por técnico.</div></div>
     </section>
     <section id="page-clients" class="hidden">
-      <div class="panel"><header><h3>Clientes</h3></header><div class="body" id="clientsBody"></div></div>
+      <div class="panel">
+        <header>
+          <h3>Clientes</h3>
+          <button class="btn primary no-print right" id="btnAddNewClient">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"></path></svg>
+            Nuevo Cliente
+          </button>
+        </header>
+        <div class="body" id="clientsBody">
+          <table class="table" id="mainClientsTable">
+            <thead>
+              <tr><th>Nombre</th><th>Correo</th><th>Teléfono</th><th>RFC</th></tr>
+            </thead>
+            <tbody><!-- Filas de clientes se insertarán aquí --></tbody>
+          </table>
+        </div>
+      </div>
     </section>
     <section id="page-vehicles" class="hidden">
-      <div class="panel"><header><h3>Vehículos</h3></header><div class="body" id="vehiclesBody"></div></div>
+      <div class="panel">
+        <header>
+          <h3>Vehículos</h3>
+          <button class="btn primary no-print right" id="btnAddNewVehicle">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"></path></svg>
+            Nuevo Vehículo
+          </button>
+        </header>
+        <div class="body">
+          <table class="table" id="mainVehiclesTable">
+            <thead>
+              <tr>
+                <th>Propietario</th>
+                <th>Vehículo</th>
+                <th>Color</th>
+                <th>Placas</th>
+                <th>VIN</th>
+                <th class="no-print">Acciones</th>
+              </tr>
+            </thead>
+            <tbody><!-- Vehicle rows will be inserted here --></tbody>
+          </table>
+        </div>
+      </div>
     </section>
     <section id="page-inventory" class="hidden">
-      <div class="panel"><header><h3>Inventario</h3></header><div class="body">Mínimos/Máximos, equivalencias OEM/Aftermarket, costos, márgenes, alertas.</div></div>
+      <div class="panel">
+        <header>
+          <h3>Inventario de Productos</h3>
+          <button class="btn primary no-print right" id="btnAddNewItem">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"></path></svg>
+            Nuevo Producto
+          </button>
+        </header>
+        <div class="body">
+          <table class="table" id="inventoryTable">
+            <thead>
+              <tr>
+                <th>SKU</th>
+                <th>Descripción</th>
+                <th>Proveedor</th>
+                <th>Stock</th>
+                <th>P. Compra</th>
+                <th>P. Venta</th>
+                <th class="no-print">Acciones</th>
+              </tr>
+            </thead>
+            <tbody><!-- Inventory items will be inserted here --></tbody>
+          </table>
+        </div>
+      </div>
     </section>
+    <section id="page-payrolls" class="hidden">
+      <div class="grid row-2" style="align-items: start;">
+        <!-- Columna Izquierda: Generador y Resultados -->
+        <div class="panel">
+          <header><h3>Generar Nueva Nómina</h3></header>
+          <div class="body">
+            <div class="form-grid" style="grid-template-columns: 1fr 1fr 1fr auto; align-items: end;">
+              <div class="field">
+                <label>Técnico</label>
+                <select id="payrollTechSelect" class="input"></select>
+              </div>
+              <div class="field">
+                <label>Fecha Inicio</label>
+                <input type="date" class="input" id="payrollStartDate">
+              </div>
+              <div class="field">
+                <label>Fecha Fin</label>
+                <input type="date" class="input" id="payrollEndDate">
+              </div>
+              <button class="btn primary" id="calculatePayrollBtn">Calcular</button>
+            </div>
+            <hr class="sep" style="margin: 20px 0;">
+            <div id="payrollResult" class="hidden">
+              <h4>Resultado del Cálculo</h4>
+              <div id="payrollResultData" style="margin-bottom: 15px;"></div>
+              <button class="btn" id="savePayrollBtn">Guardar Nómina</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Columna Derecha: Configuración del Técnico -->
+        <div class="panel">
+          <header><h3>Configuración de Pago</h3></header>
+          <div class="body" id="techConfigBody">
+            <p class="muted" id="techConfigHelpText">Seleccione un técnico para ver o editar su configuración.</p>
+            <form id="techConfigForm" class="hidden" onsubmit="return false;">
+                <input type="hidden" id="configTechId">
+                <div class="field">
+                    <label>Tipo de Pago</label>
+                    <select id="configPayType" class="input">
+                        <option value="salario_fijo">Salario Fijo</option>
+                        <option value="comision">Comisión</option>
+                        <option value="mixto">Mixto</option>
+                    </select>
+                </div>
+                <div class="field">
+                    <label>Monto Salario Fijo ($)</label>
+                    <input type="number" step="0.01" class="input" id="configSalary" placeholder="2000.00">
+                </div>
+                <div class="field">
+                    <label>% de Comisión</label>
+                    <input type="number" step="0.1" class="input" id="configCommission" placeholder="15.5">
+                </div>
+                <button class="btn primary" id="saveTechConfigBtn" style="margin-top: 10px;">Guardar Configuración</button>
+            </form>
+          </div>
+        </div>
+      </div>
+
+      <!-- Fila Inferior: Historial de Nóminas -->
+      <div class="panel" style="margin-top: 16px;">
+          <header><h3>Historial de Nóminas Guardadas</h3></header>
+          <div class="body">
+              <table class="table" id="payrollHistoryTable">
+                  <thead>
+                      <tr><th>Técnico</th><th>Periodo</th><th>Total Pagado</th><th>Fecha de Pago</th><th>Estatus</th></tr>
+                  </thead>
+                  <tbody><tr><td colspan="5">No hay registros de nómina.</td></tr></tbody>
+              </table>
+          </div>
+      </div>
+    </section>
+
     <section id="page-reports" class="hidden">
-      <div class="panel"><header><h3>Reportes</h3></header><div class="body">Ventas por categoría, productividad por técnico, rotación de inventario, retención de clientes.</div></div>
+      <div class="grid row-2">
+        <div class="panel">
+          <header><h3>Ventas Mensuales (Último Año)</h3></header>
+          <div class="body" style="height: 320px;">
+            <canvas id="salesChart"></canvas>
+          </div>
+        </div>
+        <div class="panel">
+          <header><h3>Productos Más Vendidos (Mes Actual)</h3></header>
+          <div class="body" style="height: 320px;">
+            <canvas id="topProductsChart"></canvas>
+          </div>
+        </div>
+      </div>
+      <div class="panel" style="margin-top: 16px;">
+        <header><h3>Servicios Más Solicitados (Mes Actual)</h3></header>
+        <div class="body" style="height: 320px;">
+          <canvas id="topServicesChart"></canvas>
+        </div>
+      </div>
     </section>
   </main>
 </div>
@@ -416,8 +579,89 @@ small.help{color:var(--muted)}
         <tbody></tbody>
       </table>
     </div>
-    <div class="footer">
+    <div class="footer" style="justify-content: space-between;">
+      <button class="btn primary" id="addNewClientFromQuoteBtn">Crear Nuevo Cliente</button>
       <button class="btn ghost" onclick="closeModal('modalClient')">Cancelar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: Formulario de Vehículo -->
+<div class="modal-backdrop" id="modalVehicleForm">
+  <div class="modal" style="width: min(1024px, 96vw);">
+    <header>
+      <strong id="vehicleModalTitle">Nuevo Vehículo</strong>
+    </header>
+    <div class="content">
+      <form id="vehicleForm" onsubmit="return false;">
+        <input type="hidden" id="vehicleId" value="">
+        <div class="form-grid">
+          <div class="field"><label>Propietario (Cliente)</label><select class="input" id="vehicleOwnerSelect" required></select></div>
+          <div class="field"><label>Marca</label><input class="input" id="vehicleMake" placeholder="Ej. Nissan" required></div>
+          <div class="field"><label>Modelo</label><input class="input" id="vehicleModel" placeholder="Ej. Versa" required></div>
+          <div class="field"><label>Año</label><input class="input" id="vehicleYear" type="number" placeholder="Ej. 2020" required></div>
+          <div class="field"><label>Color</label><input class="input" id="vehicleColor" placeholder="Ej. Rojo"></div>
+          <div class="field"><label>Placas</label><input class="input" id="vehiclePlate" placeholder="ABC-123-A"></div>
+          <div class="field"><label>VIN</label><input class="input" id="vehicleVIN" placeholder="17 caracteres"></div>
+          <div class="field"><label>Kilometraje</label><input class="input" id="vehicleKM" type="number" placeholder="55000"></div>
+        </div>
+      </form>
+    </div>
+    <div class="footer">
+      <button class="btn ghost" onclick="closeModal('modalVehicleForm')">Cancelar</button>
+      <button class="btn primary" id="saveVehicleBtn">Guardar Vehículo</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: Formulario de Cliente -->
+<div class="modal-backdrop" id="modalClientForm">
+  <div class="modal">
+    <header>
+      <strong id="clientModalTitle">Nuevo Cliente</strong>
+    </header>
+    <div class="content">
+      <form id="clientForm" onsubmit="return false;">
+        <input type="hidden" id="clientId" value="">
+        <div class="form-grid" style="grid-template-columns: 1fr 1fr;">
+          <div class="field"><label>Nombre / Razón Social</label><input class="input" id="clientName" required></div>
+          <div class="field"><label>Correo Electrónico</label><input class="input" id="clientEmail" type="email" required></div>
+          <div class="field"><label>Teléfono</label><input class="input" id="clientPhone"></div>
+          <div class="field"><label>RFC</label><input class="input" id="clientRFC"></div>
+        </div>
+        <div class="field" style="margin-top: 12px;"><label>Dirección</label><textarea class="input" id="clientAddress" rows="3"></textarea></div>
+      </form>
+    </div>
+    <div class="footer">
+      <button class="btn ghost" onclick="closeModal('modalClientForm')">Cancelar</button>
+      <button class="btn primary" id="saveClientBtn">Guardar Cliente</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: Formulario de Inventario -->
+<div class="modal-backdrop" id="modalInventory">
+  <div class="modal">
+    <header>
+      <strong id="inventoryModalTitle">Nuevo Producto</strong>
+    </header>
+    <div class="content">
+      <form id="inventoryForm" onsubmit="return false;">
+        <input type="hidden" id="invItemId" value="">
+        <div class="form-grid">
+          <div class="field"><label>SKU</label><input class="input" id="invSKU" placeholder="Código de producto"></div>
+          <div class="field"><label>Descripción</label><input class="input" id="invDesc" placeholder="Nombre o descripción" required></div>
+          <div class="field"><label>Proveedor</label><input class="input" id="invProvider" placeholder="Nombre del proveedor"></div>
+          <div class="field"><label>Stock Actual</label><input class="input" id="invStock" type="number" value="0" required></div>
+          <div class="field"><label>Precio Compra</label><input class="input" id="invBuyPrice" type="number" step="0.01" placeholder="0.00"></div>
+          <div class="field"><label>Precio Venta</label><input class="input" id="invSellPrice" type="number" step="0.01" placeholder="0.00" required></div>
+          <div class="field"><label>Stock Mínimo</label><input class="input" id="invMinStock" type="number" value="0"></div>
+        </div>
+      </form>
+    </div>
+    <div class="footer">
+      <button class="btn ghost" onclick="closeModal('modalInventory')">Cancelar</button>
+      <button class="btn primary" id="saveInventoryItem">Guardar</button>
     </div>
   </div>
 </div>
@@ -436,7 +680,8 @@ small.help{color:var(--muted)}
         <tbody></tbody>
       </table>
     </div>
-    <div class="footer">
+    <div class="footer" style="justify-content: space-between;">
+      <button class="btn primary" id="addNewVehicleFromQuoteBtn">Crear Nuevo Vehículo</button>
       <button class="btn ghost" onclick="closeModal('modalVehicle')">Cancelar</button>
     </div>
   </div>
@@ -459,7 +704,641 @@ $$('.nav a').forEach(a=>{
     const page = a.dataset.page;
     $$('main > section').forEach(s=>s.classList.add('hidden'));
     byId('page-' + page).classList.remove('hidden');
+
+    // --- Carga de datos dinámica al cambiar de página ---
+    if (page === 'clients') {
+      loadClientsPage();
+    } else if (page === 'inventory') {
+      loadInventoryPage();
+    } else if (page === 'reports') {
+      loadReportsPage();
+    } else if (page === 'payrolls') {
+      loadPayrollsPage();
+    } else if (page === 'vehicles') {
+      loadVehiclesPage();
+    }
   });
+});
+
+/* ---------- Carga de Datos de Clientes (Página Principal) ---------- */
+async function loadClientsPage() {
+  const tbody = byId('mainClientsTable').querySelector('tbody');
+  tbody.innerHTML = '<tr><td colspan="4">Cargando...</td></tr>';
+
+  try {
+    const response = await fetch('http://localhost:5001/api/clients');
+    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+    const clients = await response.json();
+
+    if (clients.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="4">No se encontraron clientes.</td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = clients.map(c => `
+      <tr>
+        <td>${c.nombre}</td>
+        <td>${c.correo}</td>
+        <td>${c.telefono || ''}</td>
+        <td>${c.rfc || ''}</td>
+      </tr>
+    `).join('');
+  } catch (error) {
+    console.error('Error al cargar clientes:', error);
+    tbody.innerHTML = '<tr><td colspan="4" style="color:var(--danger)">Error al cargar los clientes. Revise la consola.</td></tr>';
+  }
+}
+
+/* ---------- Payrolls Page ---------- */
+let lastPayrollCalc = {};
+
+function setupPayrollEventListeners() {
+    // Listener for technician selection change
+    byId('payrollTechSelect').addEventListener('change', async (e) => {
+        const userId = e.target.value;
+        const configForm = byId('techConfigForm');
+        const helpText = byId('techConfigHelpText');
+
+        byId('payrollResult').classList.add('hidden');
+        lastPayrollCalc = {};
+
+        if (!userId) {
+            configForm.classList.add('hidden');
+            helpText.classList.remove('hidden');
+            return;
+        }
+
+        try {
+            const response = await fetch(`http://localhost:5001/api/mechanics/config/${userId}`);
+            configForm.reset();
+            byId('configTechId').value = userId;
+            if (response.ok) {
+                const config = await response.json();
+                byId('configPayType').value = config.tipo_pago;
+                byId('configSalary').value = config.monto_salario || '';
+                byId('configCommission').value = config.porcentaje_comision || '';
+            }
+            helpText.classList.add('hidden');
+            configForm.classList.remove('hidden');
+        } catch (error) {
+            console.error('Failed to load tech config', error);
+            configForm.classList.add('hidden');
+            helpText.classList.remove('hidden');
+            helpText.textContent = 'No se pudo cargar la configuración.';
+        }
+    });
+
+    // Listener for saving tech config
+    byId('saveTechConfigBtn').addEventListener('click', async () => {
+        const userId = byId('configTechId').value;
+        if(!userId) return;
+        const data = {
+            tipo_pago: byId('configPayType').value,
+            monto_salario: parseFloat(byId('configSalary').value) || null,
+            porcentaje_comision: parseFloat(byId('configCommission').value) || null,
+        };
+        try {
+            const response = await fetch(`http://localhost:5001/api/mechanics/config/${userId}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data)
+            });
+            if (!response.ok) throw new Error('Failed to save config');
+            alert('Configuración guardada con éxito.');
+        } catch (error) {
+            alert('Error al guardar la configuración.');
+            console.error(error);
+        }
+    });
+
+    // Listener for calculating payroll
+    byId('calculatePayrollBtn').addEventListener('click', async () => {
+        const userId = byId('payrollTechSelect').value;
+        const startDate = byId('payrollStartDate').value;
+        const endDate = byId('payrollEndDate').value;
+
+        if (!userId || !startDate || !endDate) {
+            alert('Por favor, seleccione un técnico y un rango de fechas.');
+            return;
+        }
+
+        const btn = byId('calculatePayrollBtn');
+        btn.disabled = true;
+        btn.textContent = 'Calculando...';
+        byId('payrollResult').classList.add('hidden');
+
+        try {
+            const response = await fetch('http://localhost:5001/api/payrolls/calculate', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ user_id: userId, start_date: startDate, end_date: endDate })
+            });
+
+            const result = await response.json();
+            if (!response.ok) throw new Error(result.error || 'Calculation failed');
+
+            lastPayrollCalc = { ...result, start_date: startDate, end_date: endDate }; // Cache the result
+
+            const resultDiv = byId('payrollResultData');
+            resultDiv.innerHTML = `
+                <div class="tot-card" style="padding:10px; margin-top:10px;">
+                  <div class="tot-row"><span>Técnico</span><strong>${result.tecnico_nombre}</strong></div>
+                  <div class="tot-row"><span>Periodo</span><strong>${result.periodo}</strong></div>
+                  <hr class="sep">
+                  <div class="tot-row"><span>Salario Base</span><strong>${money(result.salario_base)}</strong></div>
+                  <div class="tot-row"><span>Comisiones (${result.porcentaje_comision}%)</span><strong>${money(result.comisiones_ganadas)}</strong></div>
+                  <hr class="sep">
+                  <div class="tot-grand" style="font-size:18px"><span>Total a Pagar</span><span>${money(result.total_pagar)}</span></div>
+                </div>
+            `;
+            byId('payrollResult').classList.remove('hidden');
+        } catch (error) {
+            alert(`Error al calcular la nómina: ${error.message}`);
+            byId('payrollResult').classList.add('hidden');
+        } finally {
+            btn.disabled = false;
+            btn.textContent = 'Calcular';
+        }
+    });
+
+    // Listener for saving the calculated payroll
+    byId('savePayrollBtn').addEventListener('click', async () => {
+        if (!lastPayrollCalc.user_id) {
+            alert('Primero debe realizar un cálculo.');
+            return;
+        }
+
+        const dataToSave = {
+            user_id: lastPayrollCalc.user_id,
+            start_date: lastPayrollCalc.start_date,
+            end_date: lastPayrollCalc.end_date,
+            salario_base: lastPayrollCalc.salario_base,
+            comisiones_ganadas: lastPayrollCalc.comisiones_ganadas,
+            total_pagar: lastPayrollCalc.total_pagar,
+        };
+
+        try {
+            const response = await fetch('http://localhost:5001/api/payrolls', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(dataToSave)
+            });
+            if (!response.ok) throw new Error('Failed to save payroll');
+            alert('Nómina guardada con éxito.');
+            lastPayrollCalc = {}; // Clear cache
+            byId('payrollResult').classList.add('hidden');
+            loadPayrollHistory(); // Refresh history
+        } catch (error) {
+            alert('Error al guardar la nómina.');
+            console.error(error);
+        }
+    });
+}
+
+async function loadPayrollHistory() {
+    const tbody = byId('payrollHistoryTable').querySelector('tbody');
+    tbody.innerHTML = '<tr><td colspan="5">Cargando historial...</td></tr>';
+    try {
+        const response = await fetch('http://localhost:5001/api/payrolls');
+        const history = await response.json();
+
+        if (history.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="5">No hay registros de nómina.</td></tr>';
+            return;
+        }
+
+        tbody.innerHTML = history.map(p => `
+            <tr>
+                <td>${p.tecnico_nombre}</td>
+                <td>${p.fecha_inicio_periodo.split('T')[0]} al ${p.fecha_fin_periodo.split('T')[0]}</td>
+                <td>${money(p.total_pagar)}</td>
+                <td>${new Date(p.fecha_generacion).toLocaleString()}</td>
+                <td><span class="badge">${p.estatus}</span></td>
+            </tr>
+        `).join('');
+    } catch (error) {
+        console.error('Failed to load payroll history', error);
+        tbody.innerHTML = '<tr><td colspan="5" style="color:var(--danger)">Error al cargar el historial.</td></tr>';
+    }
+}
+
+async function loadPayrollsPage() {
+    const techSelect = byId('payrollTechSelect');
+    techSelect.innerHTML = '<option>Cargando técnicos...</option>';
+
+    try {
+        const response = await fetch('http://localhost:5001/api/users/technicians');
+        const technicians = await response.json();
+        techSelect.innerHTML = '<option value="">-- Seleccione un técnico --</option>';
+        techSelect.innerHTML += technicians.map(t => `<option value="${t.id_usuario}">${t.nombre}</option>`).join('');
+    } catch (error) {
+        console.error('Failed to load technicians', error);
+        techSelect.innerHTML = '<option>Error al cargar</option>';
+    }
+
+    // Set default dates (e.g., last month)
+    const today = new Date();
+    const firstDayLastMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+    const lastDayLastMonth = new Date(today.getFullYear(), today.getMonth(), 0);
+    byId('payrollStartDate').value = firstDayLastMonth.toISOString().slice(0,10);
+    byId('payrollEndDate').value = lastDayLastMonth.toISOString().slice(0,10);
+
+    loadPayrollHistory();
+}
+// Run once to attach listeners
+setupPayrollEventListeners();
+
+
+/* ---------- Client Form Management ---------- */
+byId('btnAddNewClient').addEventListener('click', () => {
+    byId('clientForm').reset();
+    byId('clientModalTitle').textContent = 'Nuevo Cliente';
+    byId('clientId').value = ''; // Ensure we are in "add" mode
+    openModal('modalClientForm');
+});
+
+byId('saveClientBtn').addEventListener('click', async () => {
+    const form = byId('clientForm');
+    if (!form.checkValidity()) {
+        form.reportValidity();
+        return;
+    }
+
+    const data = {
+        nombre: byId('clientName').value,
+        correo: byId('clientEmail').value,
+        telefono: byId('clientPhone').value,
+        rfc: byId('clientRFC').value,
+        direccion: byId('clientAddress').value
+    };
+
+    // For now, we only support adding, not editing
+    const url = '/api/clients';
+    const method = 'POST';
+
+    try {
+        const response = await fetch(`http://localhost:5001${url}`, {
+            method: method,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        });
+
+        if (!response.ok) {
+            const errData = await response.json();
+            throw new Error(errData.error || `HTTP error ${response.status}`);
+        }
+
+        closeModal('modalClientForm');
+        loadClientsPage(); // Refresh the main client list
+
+        // also refresh the list used in the quote modal
+        allClients = [];
+    } catch (error) {
+        console.error('Error saving client:', error);
+        alert(`No se pudo guardar el cliente: ${error.message}`);
+    }
+});
+
+
+/* ---------- Vehicle Form Management ---------- */
+async function populateVehicleOwnerSelect() {
+    const select = byId('vehicleOwnerSelect');
+    // Use cached client list if available
+    if (allClients.length > 0) {
+        select.innerHTML = allClients.map(c => `<option value="${c.id_cliente}">${c.nombre}</option>`).join('');
+        return;
+    }
+    // Fetch if cache is empty
+    try {
+        const response = await fetch('http://localhost:5001/api/clients');
+        allClients = await response.json();
+        populateVehicleOwnerSelect(); // Recurse to populate from cache
+    } catch (error) {
+        console.error('Failed to load clients for vehicle form', error);
+        select.innerHTML = '<option>Error al cargar clientes</option>';
+    }
+}
+
+byId('btnAddNewVehicle').addEventListener('click', () => {
+    byId('vehicleForm').reset();
+    byId('vehicleModalTitle').textContent = 'Nuevo Vehículo';
+    byId('vehicleId').value = '';
+    populateVehicleOwnerSelect();
+    openModal('modalVehicleForm');
+});
+
+async function loadVehiclesPage() {
+    const tbody = byId('mainVehiclesTable').querySelector('tbody');
+    tbody.innerHTML = '<tr><td colspan="6">Cargando vehículos...</td></tr>';
+    try {
+        const response = await fetch('http://localhost:5001/api/vehicles');
+        const vehicles = await response.json();
+        if (vehicles.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="6">No hay vehículos registrados.</td></tr>';
+            return;
+        }
+        tbody.innerHTML = vehicles.map(v => `
+            <tr data-item='${JSON.stringify(v)}'>
+                <td>${v.nombre_cliente}</td>
+                <td>${v.marca} ${v.modelo} ${v.anio}</td>
+                <td>${v.color || ''}</td>
+                <td>${v.placas || ''}</td>
+                <td>${v.vin || ''}</td>
+                <td class="no-print row-actions">
+                    <button class="mini" onclick="editVehicle(this)">Editar</button>
+                    <button class="mini" onclick="deleteVehicle(${v.id_vehiculo})">Borrar</button>
+                </td>
+            </tr>
+        `).join('');
+    } catch (error) {
+        console.error('Error loading vehicles:', error);
+        tbody.innerHTML = '<tr><td colspan="6" style="color:var(--danger)">Error al cargar vehículos.</td></tr>';
+    }
+}
+
+function editVehicle(btn) {
+    byId('vehicleForm').reset();
+    byId('vehicleModalTitle').textContent = 'Editar Vehículo';
+    populateVehicleOwnerSelect();
+
+    const row = btn.closest('tr');
+    const vehicleData = JSON.parse(row.dataset.item);
+
+    byId('vehicleId').value = vehicleData.id_vehiculo;
+    byId('vehicleOwnerSelect').value = vehicleData.cliente_id;
+    byId('vehicleMake').value = vehicleData.marca;
+    byId('vehicleModel').value = vehicleData.modelo;
+    byId('vehicleYear').value = vehicleData.anio;
+    byId('vehicleColor').value = vehicleData.color || '';
+    byId('vehiclePlate').value = vehicleData.placas || '';
+    byId('vehicleVIN').value = vehicleData.vin || '';
+    byId('vehicleKM').value = vehicleData.km || '';
+
+    openModal('modalVehicleForm');
+}
+
+async function deleteVehicle(id) {
+    if (!confirm('¿Estás seguro de que quieres eliminar este vehículo?')) return;
+    try {
+        const response = await fetch(`http://localhost:5001/api/vehicles/${id}`, { method: 'DELETE' });
+        if (!response.ok) throw new Error('Failed to delete');
+        loadVehiclesPage(); // Refresh table
+    } catch (error) {
+        console.error('Error deleting vehicle:', error);
+        alert('No se pudo eliminar el vehículo.');
+    }
+}
+
+byId('saveVehicleBtn').addEventListener('click', async () => {
+    const form = byId('vehicleForm');
+    if (!form.checkValidity()) {
+        form.reportValidity();
+        return;
+    }
+
+    const vehicleId = byId('vehicleId').value;
+    const data = {
+        cliente_id: byId('vehicleOwnerSelect').value,
+        marca: byId('vehicleMake').value,
+        modelo: byId('vehicleModel').value,
+        anio: byId('vehicleYear').value,
+        color: byId('vehicleColor').value,
+        placas: byId('vehiclePlate').value,
+        vin: byId('vehicleVIN').value,
+        km: byId('vehicleKM').value
+    };
+
+    const url = vehicleId ? `http://localhost:5001/api/vehicles/${vehicleId}` : 'http://localhost:5001/api/vehicles';
+    const method = vehicleId ? 'PUT' : 'POST';
+
+    try {
+        const response = await fetch(url, {
+            method: method,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        });
+        if (!response.ok) {
+            const errData = await response.json();
+            throw new Error(errData.error || `HTTP error ${response.status}`);
+        }
+        closeModal('modalVehicleForm');
+        loadVehiclesPage();
+    } catch (error) {
+        console.error('Error saving vehicle:', error);
+        alert(`No se pudo guardar el vehículo: ${error.message}`);
+    }
+});
+
+
+/* ---------- Reports Page ---------- */
+let salesChartInstance;
+let topProductsChartInstance;
+let topServicesChartInstance;
+
+async function loadReportsPage() {
+    // Destroy previous chart instances if they exist to prevent flickering
+    if (salesChartInstance) salesChartInstance.destroy();
+    if (topProductsChartInstance) topProductsChartInstance.destroy();
+    if (topServicesChartInstance) topServicesChartInstance.destroy();
+
+    // Fetch and render all charts
+    renderSalesChart();
+    renderTopItemsChart('refaccion', 'topProductsChart', 'Productos');
+    renderTopItemsChart('mano_obra', 'topServicesChart', 'Servicios');
+}
+
+async function renderSalesChart() {
+    const ctx = byId('salesChart').getContext('2d');
+    try {
+        const response = await fetch('http://localhost:5001/api/reports/sales?period=monthly');
+        if (!response.ok) throw new Error('Network response was not ok');
+        const data = await response.json();
+
+        salesChartInstance = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: data.map(row => row.period),
+                datasets: [{
+                    label: 'Ventas Totales',
+                    data: data.map(row => row.total_sales),
+                    backgroundColor: 'rgba(37, 99, 235, 0.6)',
+                    borderColor: 'rgba(37, 99, 235, 1)',
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: { y: { beginAtZero: true } }
+            }
+        });
+    } catch (error) {
+        console.error('Error rendering sales chart:', error);
+        ctx.font = "14px Inter";
+        ctx.fillStyle = "var(--muted)";
+        ctx.textAlign = "center";
+        ctx.fillText("No se pudieron cargar los datos del gráfico.", 150, 100);
+    }
+}
+
+async function renderTopItemsChart(type, canvasId, label) {
+    const ctx = byId(canvasId).getContext('2d');
+    try {
+        const response = await fetch(`http://localhost:5001/api/reports/top-items?type=${type}`);
+        if (!response.ok) throw new Error('Network response was not ok');
+        const data = await response.json();
+
+        const chartInstance = new Chart(ctx, {
+            type: 'doughnut',
+            data: {
+                labels: data.map(row => row.descripcion),
+                datasets: [{
+                    label: `Top ${label}`,
+                    data: data.map(row => row.total_quantity),
+                    backgroundColor: ['#3B82F6','#8B5CF6','#EC4899','#10B981','#F59E0B','#6366F1','#D946EF','#06B6D4','#14B8A6','#F97316'],
+                    borderWidth: 0,
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { position: 'right' } }
+            }
+        });
+
+        if (canvasId === 'topProductsChart') {
+            topProductsChartInstance = chartInstance;
+        } else {
+            topServicesChartInstance = chartInstance;
+        }
+    } catch (error) {
+        console.error(`Error rendering top ${label} chart:`, error);
+        ctx.font = "14px Inter";
+        ctx.fillStyle = "var(--muted)";
+        ctx.textAlign = "center";
+        ctx.fillText("No se pudieron cargar los datos del gráfico.", 150, 100);
+    }
+}
+
+
+/* ---------- Inventory Management ---------- */
+async function loadInventoryPage() {
+    const tbody = byId('inventoryTable').querySelector('tbody');
+    tbody.innerHTML = '<tr><td colspan="7">Cargando inventario...</td></tr>';
+
+    try {
+        const response = await fetch('http://localhost:5001/api/inventory');
+        if (!response.ok) throw new Error(`HTTP error! ${response.status}`);
+        const items = await response.json();
+
+        if (items.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="7">No hay productos en el inventario.</td></tr>';
+            return;
+        }
+
+        tbody.innerHTML = items.map(item => `
+            <tr data-item='${JSON.stringify(item)}'>
+                <td>${item.sku || ''}</td>
+                <td>${item.descripcion}</td>
+                <td>${item.proveedor || ''}</td>
+                <td>${item.stock}</td>
+                <td>${money(item.precio_compra)}</td>
+                <td>${money(item.precio_venta)}</td>
+                <td class="no-print row-actions">
+                    <button class="mini" onclick="editInventoryItem(this)">Editar</button>
+                    <button class="mini" onclick="deleteInventoryItem(${item.id_producto})">Borrar</button>
+                </td>
+            </tr>
+        `).join('');
+    } catch (error) {
+        console.error('Error loading inventory:', error);
+        tbody.innerHTML = '<tr><td colspan="7" style="color:var(--danger)">Error al cargar el inventario.</td></tr>';
+    }
+}
+
+function resetInventoryForm() {
+    byId('inventoryModalTitle').textContent = 'Nuevo Producto';
+    byId('inventoryForm').reset();
+    byId('invItemId').value = '';
+}
+
+byId('btnAddNewItem').addEventListener('click', () => {
+    resetInventoryForm();
+    openModal('modalInventory');
+});
+
+function editInventoryItem(btn) {
+    resetInventoryForm();
+    byId('inventoryModalTitle').textContent = 'Editar Producto';
+
+    const row = btn.closest('tr');
+    const itemData = JSON.parse(row.dataset.item);
+
+    byId('invItemId').value = itemData.id_producto;
+    byId('invSKU').value = itemData.sku || '';
+    byId('invDesc').value = itemData.descripcion;
+    byId('invProvider').value = itemData.proveedor || '';
+    byId('invStock').value = itemData.stock;
+    byId('invBuyPrice').value = itemData.precio_compra || '';
+    byId('invSellPrice').value = itemData.precio_venta;
+    byId('invMinStock').value = itemData.stock_minimo || 0;
+
+    openModal('modalInventory');
+}
+
+async function deleteInventoryItem(id) {
+    if (!confirm('¿Estás seguro de que quieres eliminar este producto?')) {
+        return;
+    }
+    try {
+        const response = await fetch(`http://localhost:5001/api/inventory/${id}`, { method: 'DELETE' });
+        if (!response.ok) throw new Error(`HTTP error! ${response.status}`);
+        loadInventoryPage(); // Refresh table
+    } catch (error) {
+        console.error('Error deleting item:', error);
+        alert('No se pudo eliminar el producto.');
+    }
+}
+
+byId('saveInventoryItem').addEventListener('click', async () => {
+    const form = byId('inventoryForm');
+    if (!form.checkValidity()) {
+        form.reportValidity();
+        return;
+    }
+
+    const itemId = byId('invItemId').value;
+    const data = {
+        sku: byId('invSKU').value,
+        descripcion: byId('invDesc').value,
+        proveedor: byId('invProvider').value,
+        stock: parseInt(byId('invStock').value, 10),
+        precio_compra: parseFloat(byId('invBuyPrice').value) || null,
+        precio_venta: parseFloat(byId('invSellPrice').value),
+        stock_minimo: parseInt(byId('invMinStock').value, 10) || 0,
+    };
+
+    const url = itemId ? `http://localhost:5001/api/inventory/${itemId}` : 'http://localhost:5001/api/inventory';
+    const method = itemId ? 'PUT' : 'POST';
+
+    try {
+        const response = await fetch(url, {
+            method: method,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        });
+
+        if (!response.ok) {
+            const errData = await response.json();
+            throw new Error(errData.error || `HTTP error! ${response.status}`);
+        }
+
+        closeModal('modalInventory');
+        loadInventoryPage(); // Refresh table
+    } catch (error) {
+        console.error('Error saving item:', error);
+        alert(`No se pudo guardar el producto: ${error.message}`);
+    }
 });
 
 /* ---------- Theme toggle ---------- */
@@ -473,12 +1352,7 @@ document.addEventListener('keydown', (e)=>{
   if(e.key === '/'){ e.preventDefault(); byId('globalSearch').focus(); }
 });
 
-/* ---------- Demo Data ---------- */
-const demoClients = [
-  {name:'Juan Pérez', email:'juan@cliente.com', phone:'+52 444 123 4567', rfc:'PEPJ8001019Q8'},
-  {name:'Transportes MX SA de CV', email:'compras@transportes.com', phone:'+52 55 5555 5555', rfc:'TMX200101ABC'},
-  {name:'María López', email:'maria@gmail.com', phone:'+52 81 1234 5678', rfc:'LOMA900101H20'}
-];
+/* ---------- Demo Data (Vehicles and Quotes are still static) ---------- */
 const demoVehicles = [
   {veh:'Nissan Versa 2019', plate:'XBC-329-A', vin:'3N1CN7AD4KL123456', km: 54432},
   {veh:'Toyota Hilux 2021', plate:'WLK-77-22', vin:'MR0KB3CD8M0123456', km: 81200},
@@ -509,24 +1383,55 @@ function loadDashboard(){
 loadDashboard();
 
 /* ---------- Clients & Vehicles modals ---------- */
+let allClients = []; // Cache for clients to use in modals and searches
+
 function openModal(id){ byId(id).style.display='grid'; }
 function closeModal(id){ byId(id).style.display='none'; }
 
-byId('btnSelectClient').addEventListener('click', ()=>{
+async function populateClientModal() {
   const tbody = byId('clientsTable').querySelector('tbody');
-  tbody.innerHTML = demoClients.map((c,i)=>`
-    <tr>
-      <td>${c.name}</td><td>${c.email}</td><td>${c.phone}</td>
-      <td><button class="btn ghost mini" data-idx="${i}" onclick="selectClient(${i})">Elegir</button></td>
-    </tr>
-  `).join('');
+
+  // Render from cache if it's already populated
+  if (allClients.length > 0) {
+    tbody.innerHTML = allClients.map((c, i) => `
+      <tr>
+        <td>${c.nombre}</td><td>${c.correo}</td><td>${c.telefono || ''}</td>
+        <td><button class="btn ghost mini" data-idx="${i}" onclick="selectClientFromModal(${i})">Elegir</button></td>
+      </tr>
+    `).join('');
+    return;
+  }
+
+  // Fetch from API if cache is empty
+  tbody.innerHTML = '<tr><td colspan="4">Cargando...</td></tr>';
+  try {
+    const response = await fetch('http://localhost:5001/api/clients');
+    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+    allClients = await response.json(); // Populate cache
+
+    // If cache is now populated, run the function again to render from cache
+    if (allClients.length > 0) {
+      populateClientModal();
+    } else {
+      tbody.innerHTML = '<tr><td colspan="4">No se encontraron clientes.</td></tr>';
+    }
+  } catch (error) {
+    console.error('Error populating client modal:', error);
+    tbody.innerHTML = '<tr><td colspan="4" style="color:var(--danger)">Error al cargar los clientes.</td></tr>';
+  }
+}
+
+byId('btnSelectClient').addEventListener('click', ()=>{
+  populateClientModal();
   openModal('modalClient');
 });
-window.selectClient = (i)=>{
-  const c = demoClients[i];
-  byId('qCliente').value = c.name;
-  byId('qEmail').value = c.email;
-  byId('qPhone').value = c.phone;
+
+window.selectClientFromModal = (idx)=>{
+  const c = allClients[idx];
+  if (!c) return;
+  byId('qCliente').value = c.nombre;
+  byId('qEmail').value = c.correo;
+  byId('qPhone').value = c.telefono || '';
   byId('qRFC').value = c.rfc || '';
   closeModal('modalClient');
 }
@@ -647,21 +1552,29 @@ byId('saveQuote').addEventListener('click', ()=>{
 
 byId('postBackend').addEventListener('click', async ()=>{
   const data = collectQuoteData();
+  if (data.items.length === 0) {
+    alert('No se puede generar una cotización sin items.');
+    return;
+  }
+
   try{
-    const res = await fetch('/api/generar_pdf.php', {
+    const res = await fetch('http://localhost:5001/api/quotes/pdf', {
       method:'POST',
       headers:{'Content-Type':'application/json'},
       body: JSON.stringify(data)
     });
-    if(!res.ok) throw new Error('HTTP ' + res.status);
+    if(!res.ok) {
+      const errText = await res.text();
+      throw new Error(`Error del servidor: ${res.status} ${res.statusText}. Detalles: ${errText}`);
+    }
     const blob = await res.blob();
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
-    a.href = url; a.download = `${data.folio}.pdf`; a.click();
+    a.href = url; a.download = `${data.folio || 'cotizacion'}.pdf`; a.click();
     URL.revokeObjectURL(url);
   }catch(err){
-    console.error(err);
-    alert('No se pudo contactar el backend. Revisa /api/generar_pdf.php');
+    console.error('Error al generar PDF:', err);
+    alert(`No se pudo generar el PDF.\nError: ${err.message}`);
   }
 });
 
@@ -705,6 +1618,18 @@ function collectQuoteData(){
     items, totales: tot
   };
 }
+
+/* ---------- Quote Flow Improvements ---------- */
+byId('addNewClientFromQuoteBtn').addEventListener('click', () => {
+    closeModal('modalClient');
+    byId('btnAddNewClient').click(); // Reuse existing logic
+});
+
+byId('addNewVehicleFromQuoteBtn').addEventListener('click', () => {
+    closeModal('modalVehicle');
+    byId('btnAddNewVehicle').click(); // Reuse existing logic
+});
+
 
 /* ---------- Route helpers ---------- */
 byId('newQuoteBtn').addEventListener('click', ()=>{
