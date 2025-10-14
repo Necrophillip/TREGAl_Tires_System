@@ -1,4 +1,7 @@
 <?php
+use Dompdf\Dompdf;
+use Dompdf\Options;
+
 class QuotesController {
     private $db;
     private $quote;

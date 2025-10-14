@@ -1,6 +1,5 @@
 <?php
-// Incluir la librería JWT
-// No es necesario, ya se carga en el index.php principal
+use Firebase\JWT\JWT;
 
 class UsersController {
     private $db;
