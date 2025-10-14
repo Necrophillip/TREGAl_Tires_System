@@ -134,7 +134,7 @@ class Quote {
 
     // Leer todas las cotizaciones
     public function read() {
-        $query = "SELECT q.*, c.nombre as cliente_nombre, CONCAT(v.marca, ' ', v.modelo, ' ', v.anio) as vehiculo_info
+        $query = "SELECT q.*, c.nombre as cliente_nombre, CONCAT(v.marca, ' ', v.modelo, ' ', v.ano) as vehiculo_info
                   FROM " . $this->table_name . " q
                   LEFT JOIN clientes c ON q.cliente_id = c.id_cliente
                   LEFT JOIN vehiculos v ON q.vehiculo_id = v.id_vehiculo
@@ -146,7 +146,7 @@ class Quote {
 
     // Leer una sola cotización por ID
     public function readOne() {
-        $query = "SELECT q.*, c.nombre as cliente_nombre, CONCAT(v.marca, ' ', v.modelo, ' ', v.anio) as vehiculo_info
+        $query = "SELECT q.*, c.nombre as cliente_nombre, CONCAT(v.marca, ' ', v.modelo, ' ', v.ano) as vehiculo_info
                   FROM " . $this->table_name . " q
                   LEFT JOIN clientes c ON q.cliente_id = c.id_cliente
                   LEFT JOIN vehiculos v ON q.vehiculo_id = v.id_vehiculo

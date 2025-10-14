@@ -18,7 +18,7 @@ class WorkOrder {
     // Crear una nueva orden de trabajo a partir de una cotización
     public function create() {
         // Primero, verificar que la cotización exista y esté 'aceptada'
-        $quote_query = "SELECT estatus FROM cotizaciones WHERE id_cotizacion = :cotizacion_id";
+        $quote_query = "SELECT cliente_id, vehiculo_id, estatus FROM cotizaciones WHERE id_cotizacion = :cotizacion_id";
         $quote_stmt = $this->conn->prepare($quote_query);
         $quote_stmt->bindParam(":cotizacion_id", $this->cotizacion_id);
         $quote_stmt->execute();
@@ -33,6 +33,8 @@ class WorkOrder {
         $query = "INSERT INTO " . $this->table_name . "
                   SET
                     cotizacion_id=:cotizacion_id,
+                    cliente_id=:cliente_id,
+                    vehiculo_id=:vehiculo_id,
                     fecha_inicio=:fecha_inicio,
                     estatus='pendiente'"; // Por defecto al crear
 
@@ -41,9 +43,13 @@ class WorkOrder {
         // Limpiar datos
         $this->cotizacion_id = htmlspecialchars(strip_tags($this->cotizacion_id));
         $this->fecha_inicio = htmlspecialchars(strip_tags($this->fecha_inicio));
+        $cliente_id = htmlspecialchars(strip_tags($quote['cliente_id']));
+        $vehiculo_id = htmlspecialchars(strip_tags($quote['vehiculo_id']));
 
         // Vincular parámetros
         $stmt->bindParam(":cotizacion_id", $this->cotizacion_id);
+        $stmt->bindParam(":cliente_id", $cliente_id);
+        $stmt->bindParam(":vehiculo_id", $vehiculo_id);
         $stmt->bindParam(":fecha_inicio", $this->fecha_inicio);
 
         if ($stmt->execute()) {
