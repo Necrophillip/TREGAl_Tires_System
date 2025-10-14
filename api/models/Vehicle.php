@@ -36,20 +36,10 @@ class Vehicle {
         $stmt->bindParam(":cliente_id", $this->cliente_id);
         $stmt->bindParam(":marca", $this->marca);
         $stmt->bindParam(":modelo", $this->modelo);
+        $stmt->bindParam(":anio", $this->anio);
         $stmt->bindParam(":vin", $this->vin);
         $stmt->bindParam(":placas", $this->placas);
-
-        // Tratar campos que pueden ser NULL
-        if (!is_null($this->anio)) {
-            $stmt->bindValue(":anio", htmlspecialchars(strip_tags($this->anio)), PDO::PARAM_INT);
-        } else {
-            $stmt->bindValue(":anio", null, PDO::PARAM_NULL);
-        }
-        if (!is_null($this->km)) {
-            $stmt->bindValue(":km", htmlspecialchars(strip_tags($this->km)), PDO::PARAM_INT);
-        } else {
-            $stmt->bindValue(":km", null, PDO::PARAM_NULL);
-        }
+        $stmt->bindParam(":km", $this->km);
 
         if ($stmt->execute()) {
             $this->id_vehiculo = $this->conn->lastInsertId();

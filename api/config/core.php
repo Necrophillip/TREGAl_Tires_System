@@ -7,7 +7,7 @@ error_reporting(E_ALL);
 
 // Clave secreta para firmar el token.
 // ¡IMPORTANTE! Cambiar esto por una cadena larga, aleatoria y segura en un entorno de producción.
-define('JWT_KEY', "YOUR_VERY_SECRET_KEY_CHANGE_ME");
+define('JWT_KEY', "TREGAL3105_AUTOTECH_ERP_SECRET_KEY");
 
 // Emisor del token (generalmente el dominio de tu aplicación)
 define('JWT_ISS', "http://autotech.erp");

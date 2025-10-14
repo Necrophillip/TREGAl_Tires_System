@@ -2,8 +2,8 @@
 class Database {
     private $host = '127.0.0.1'; // o 'localhost'
     private $db_name = 'autotech_erp';
-    private $username = 'autotech_user';
-    private $password = 'autotech_password';
+    private $username = 'admin';
+    private $password = 'TREGAL3105';
     private $conn;
 
     public function getConnection() {
