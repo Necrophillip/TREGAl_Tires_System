@@ -64,7 +64,7 @@ class Quote {
             $this->id_cotizacion = $this->conn->lastInsertId();
 
             // 2. Insertar los items de la cotización y calcular totales
-            require_once 'QuoteItem.php';
+            require_once __DIR__ . '/QuoteItem.php';
             $quote_item = new QuoteItem($this->conn);
 
             $total_subtotal = 0;

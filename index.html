@@ -422,6 +422,31 @@ small.help{color:var(--muted)}
   </div>
 </div>
 
+<!-- MODAL: Login -->
+<div class="modal-backdrop" id="modalLogin" style="display: grid;">
+  <div class="modal" style="width: min(420px, 96vw);">
+    <header>
+      <strong>Iniciar Sesión - Autotech ERP</strong>
+    </header>
+    <div class="content">
+      <form id="loginForm">
+        <div class="field">
+          <label>Correo Electrónico</label>
+          <input class="input" id="loginEmail" type="email" required value="admin@autotech.com">
+        </div>
+        <div class="field" style="margin-top:12px">
+          <label>Contraseña</label>
+          <input class="input" id="loginPassword" type="password" required value="admin123">
+        </div>
+        <p id="loginError" style="color:var(--danger); font-size:14px; text-align:center; min-height:20px;"></p>
+      </form>
+    </div>
+    <div class="footer">
+      <button class="btn primary" id="loginBtn">Ingresar</button>
+    </div>
+  </div>
+</div>
+
 <!-- MODAL: Selección de vehículo -->
 <div class="modal-backdrop" id="modalVehicle">
   <div class="modal">
@@ -473,80 +498,162 @@ document.addEventListener('keydown', (e)=>{
   if(e.key === '/'){ e.preventDefault(); byId('globalSearch').focus(); }
 });
 
-/* ---------- Demo Data ---------- */
-const demoClients = [
-  {name:'Juan Pérez', email:'juan@cliente.com', phone:'+52 444 123 4567', rfc:'PEPJ8001019Q8'},
-  {name:'Transportes MX SA de CV', email:'compras@transportes.com', phone:'+52 55 5555 5555', rfc:'TMX200101ABC'},
-  {name:'María López', email:'maria@gmail.com', phone:'+52 81 1234 5678', rfc:'LOMA900101H20'}
-];
-const demoVehicles = [
-  {veh:'Nissan Versa 2019', plate:'XBC-329-A', vin:'3N1CN7AD4KL123456', km: 54432},
-  {veh:'Toyota Hilux 2021', plate:'WLK-77-22', vin:'MR0KB3CD8M0123456', km: 81200},
-  {veh:'VW Jetta 2017', plate:'UYY-902-B', vin:'3VW267AJ3HM123456', km: 120322}
-];
-const demoQuotes = [
-  {folio:'AUT-0005', client:'Transportes MX', veh:'Hilux 2021', date:'2025-08-21', total: 18750.55, status:'Enviada'},
-  {folio:'AUT-0004', client:'Juan Pérez', veh:'Versa 2019', date:'2025-08-20', total: 4820.00, status:'Aceptada'},
-  {folio:'AUT-0003', client:'María López', veh:'Jetta 2017', date:'2025-08-18', total: 9320.70, status:'Vencida'}
-];
+/* ---------- API & Auth ---------- */
+let authToken = localStorage.getItem('authToken');
+let currentUser = JSON.parse(localStorage.getItem('currentUser'));
+
+async function apiFetch(url, options = {}) {
+  const headers = {
+    'Content-Type': 'application/json',
+    ...options.headers,
+  };
+  if (authToken) {
+    headers['Authorization'] = `Bearer ${authToken}`;
+  }
+
+  const response = await fetch(url, { ...options, headers });
+
+  if (response.status === 401) {
+    // Token inválido o expirado
+    logout();
+    return;
+  }
+  if (!response.ok) {
+    // Intenta obtener el mensaje de error del cuerpo, si no, usa el status text
+    const errorBody = await response.text();
+    try {
+      const errJson = JSON.parse(errorBody);
+      throw new Error(errJson.message || response.statusText);
+    } catch (e) {
+      throw new Error(errorBody || response.statusText);
+    }
+  }
+  // Si la respuesta no tiene contenido (ej. 204), no intentes parsear JSON
+  if (response.status === 204) {
+    return null;
+  }
+  return response.json();
+}
+
+async function login(email, password) {
+  try {
+    const data = await apiFetch('/users/login', {
+      method: 'POST',
+      body: JSON.stringify({ email, password }),
+    });
+    authToken = data.jwt;
+    currentUser = data.user;
+    localStorage.setItem('authToken', authToken);
+    localStorage.setItem('currentUser', JSON.stringify(currentUser));
+    closeModal('modalLogin');
+    loadDashboard(); // Cargar datos reales
+  } catch (error) {
+    byId('loginError').textContent = 'Error: ' + error.message;
+  }
+}
+
+function logout() {
+  authToken = null;
+  currentUser = null;
+  localStorage.removeItem('authToken');
+  localStorage.removeItem('currentUser');
+  openModal('modalLogin');
+}
+
+byId('loginBtn').addEventListener('click', () => {
+  const email = byId('loginEmail').value;
+  const password = byId('loginPassword').value;
+  if (email && password) {
+    login(email, password);
+  } else {
+    byId('loginError').textContent = 'Por favor, ingresa correo y contraseña.';
+  }
+});
+
 
 /* ---------- Dashboard binds ---------- */
-function loadDashboard(){
-  const tbody = byId('quotesTable').querySelector('tbody');
-  tbody.innerHTML = demoQuotes.map(q=>`
-    <tr>
-      <td>${q.folio}</td>
-      <td>${q.client}</td>
-      <td>${q.veh}</td>
-      <td>${q.date}</td>
-      <td>${money(q.total)}</td>
-      <td><span class="badge">${q.status}</span></td>
-    </tr>
-  `).join('');
-  byId('kpiIngresos').textContent = money(demoQuotes.reduce((s,q)=>s+q.total,0));
-  byId('kpiOrdenes').textContent = '8';
+async function loadDashboard() {
+  if (!authToken) {
+    openModal('modalLogin');
+    return;
+  }
+  try {
+    const data = await apiFetch('/quotes');
+    const quotes = data.records || [];
+    const tbody = byId('quotesTable').querySelector('tbody');
+    tbody.innerHTML = quotes.map(q => `
+      <tr>
+        <td>${q.folio}</td>
+        <td>${q.cliente_nombre}</td>
+        <td>${q.vehiculo_info}</td>
+        <td>${q.fecha}</td>
+        <td>${money(q.total)}</td>
+        <td><span class="badge">${q.estatus}</span></td>
+      </tr>
+    `).join('');
+    // Actualizar KPIs con datos reales si la API los proveyera
+    byId('kpiIngresos').textContent = money(quotes.reduce((s, q) => s + Number(q.total), 0));
+    // kpiOrdenes necesitaría su propio endpoint
+  } catch (error) {
+    console.error("Error cargando dashboard:", error);
+    alert("No se pudieron cargar las cotizaciones.");
+  }
 }
-loadDashboard();
+
 
 /* ---------- Clients & Vehicles modals ---------- */
-function openModal(id){ byId(id).style.display='grid'; }
-function closeModal(id){ byId(id).style.display='none'; }
+function openModal(id) { byId(id).style.display = 'grid'; }
+function closeModal(id) { byId(id).style.display = 'none'; }
 
-byId('btnSelectClient').addEventListener('click', ()=>{
-  const tbody = byId('clientsTable').querySelector('tbody');
-  tbody.innerHTML = demoClients.map((c,i)=>`
-    <tr>
-      <td>${c.name}</td><td>${c.email}</td><td>${c.phone}</td>
-      <td><button class="btn ghost mini" data-idx="${i}" onclick="selectClient(${i})">Elegir</button></td>
-    </tr>
-  `).join('');
-  openModal('modalClient');
+byId('btnSelectClient').addEventListener('click', async () => {
+  try {
+    const data = await apiFetch('/clients');
+    const clients = data.records || [];
+    const tbody = byId('clientsTable').querySelector('tbody');
+    tbody.innerHTML = clients.map(c => `
+      <tr>
+        <td>${c.nombre}</td><td>${c.correo}</td><td>${c.telefono}</td>
+        <td><button class="btn ghost mini" onclick='selectClient(${JSON.stringify(c)})'>Elegir</button></td>
+      </tr>
+    `).join('');
+    openModal('modalClient');
+  } catch (error) {
+    alert('No se pudieron cargar los clientes.');
+  }
 });
-window.selectClient = (i)=>{
-  const c = demoClients[i];
-  byId('qCliente').value = c.name;
-  byId('qEmail').value = c.email;
-  byId('qPhone').value = c.phone;
+window.selectClient = (c) => {
+  byId('qCliente').value = c.nombre;
+  byId('qEmail').value = c.correo;
+  byId('qPhone').value = c.telefono;
   byId('qRFC').value = c.rfc || '';
+  // Guardar el ID para la cotización
+  byId('qCliente').dataset.clientId = c.id_cliente;
   closeModal('modalClient');
 }
 
-byId('btnSelectVehicle').addEventListener('click', ()=>{
-  const tbody = byId('vehiclesTable').querySelector('tbody');
-  tbody.innerHTML = demoVehicles.map((v,i)=>`
-    <tr>
-      <td>${v.veh}</td><td>${v.plate}</td><td>${v.vin}</td>
-      <td><button class="btn ghost mini" onclick="selectVehicle(${i})">Elegir</button></td>
-    </tr>
-  `).join('');
-  openModal('modalVehicle');
+byId('btnSelectVehicle').addEventListener('click', async () => {
+  try {
+    const data = await apiFetch('/vehicles');
+    const vehicles = data.records || [];
+    const tbody = byId('vehiclesTable').querySelector('tbody');
+    tbody.innerHTML = vehicles.map(v => `
+      <tr>
+        <td>${v.marca} ${v.modelo} ${v.anio}</td><td>${v.placas}</td><td>${v.vin}</td>
+        <td><button class="btn ghost mini" onclick='selectVehicle(${JSON.stringify(v)})'>Elegir</button></td>
+      </tr>
+    `).join('');
+    openModal('modalVehicle');
+  } catch (error) {
+    alert('No se pudieron cargar los vehículos.');
+  }
 });
-window.selectVehicle = (i)=>{
-  const v = demoVehicles[i];
-  byId('qVehiculo').value = v.veh;
-  byId('qPlacas').value = v.plate;
+window.selectVehicle = (v) => {
+  byId('qVehiculo').value = `${v.marca} ${v.modelo} ${v.anio}`;
+  byId('qPlacas').value = v.placas;
   byId('qVIN').value = v.vin;
   byId('qKM').value = v.km;
+  // Guardar el ID para la cotización
+  byId('qVehiculo').dataset.vehicleId = v.id_vehiculo;
   closeModal('modalVehicle');
 }
 
@@ -635,35 +742,36 @@ window.delRow = (btn)=>{ const tr = btn.closest('tr'); tr.remove(); recalcTotals
 byId('addItemBtn').addEventListener('click', ()=> addItem({}));
 
 /* ---------- Save / POST ---------- */
-byId('saveQuote').addEventListener('click', ()=>{
+byId('saveQuote').addEventListener('click', async () => {
   const data = collectQuoteData();
-  const key = `quote:${data.folio}`;
-  localStorage.setItem(key, JSON.stringify(data));
-  alert('Cotización guardada localmente: ' + key);
-  // Add to dashboard demo list
-  demoQuotes.unshift({folio:data.folio, client:data.cliente, veh:data.vehiculo, date:data.fecha, total:data.totales.total, status:'Borrador'});
-  loadDashboard();
-});
+  if (!data.cliente_id || !data.vehiculo_id) {
+    alert("Por favor, selecciona un cliente y un vehículo antes de guardar.");
+    return;
+  }
 
-byId('postBackend').addEventListener('click', async ()=>{
-  const data = collectQuoteData();
-  try{
-    const res = await fetch('/api/generar_pdf.php', {
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
+  try {
+    const result = await apiFetch('/quotes', {
+      method: 'POST',
       body: JSON.stringify(data)
     });
-    if(!res.ok) throw new Error('HTTP ' + res.status);
-    const blob = await res.blob();
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url; a.download = `${data.folio}.pdf`; a.click();
-    URL.revokeObjectURL(url);
-  }catch(err){
-    console.error(err);
-    alert('No se pudo contactar el backend. Revisa /api/generar_pdf.php');
+    alert(`Cotización ${result.folio} guardada exitosamente.`);
+    // Limpiar y preparar para nueva cotización
+    initQuoteForm();
+    // Actualizar dashboard
+    loadDashboard();
+    // Opcional: cambiar a la vista de dashboard
+    $('[data-page="dashboard"]').click();
+  } catch (error) {
+    console.error("Error al guardar cotización:", error);
+    alert("Error al guardar la cotización: " + error.message);
   }
 });
+
+// Se elimina el botón de postBackend, se unifica la lógica en 'saveQuote'
+byId('postBackend').classList.add('hidden');
+byId('saveQuote').textContent = 'Guardar Cotización';
+byId('saveQuote').classList.add('primary');
+byId('saveQuote').classList.remove('ghost');
 
 /* ---------- Export demo (Print CSS) ---------- */
 byId('exportDemo').addEventListener('click', ()=> {
@@ -676,33 +784,30 @@ byId('exportDemo').addEventListener('click', ()=> {
 });
 
 /* ---------- Collect form ---------- */
-function collectQuoteData(){
-  const items = $$('#itemsTable tbody tr').map(tr=>{
-    const d = rowData(tr); const c = calcRow(d);
-    return { ...d, ...c };
+function collectQuoteData() {
+  const items = $$('#itemsTable tbody tr').map(tr => {
+    const d = rowData(tr);
+    return { // El backend calcula los totales, solo enviamos los datos base
+      tipo: d.type,
+      descripcion: d.desc,
+      cantidad: d.qty,
+      precio_unitario: d.price,
+      descuento: d.disc,
+      aplica_iva: d.ivaRate > 0
+    };
   });
-  const tot = {
-    subtotal: items.reduce((s,i)=>s+i.qty*i.price,0),
-    descuento: items.reduce((s,i)=>s+i.discVal,0),
-    iva: items.reduce((s,i)=>s+i.iva,0),
-    total: items.reduce((s,i)=>s+i.total,0)
-  };
+
   return {
-    folio: byId('qFolio').value || nextFolio(),
+    // IDs son cruciales para el backend
+    cliente_id: byId('qCliente').dataset.clientId,
+    vehiculo_id: byId('qVehiculo').dataset.vehicleId,
+
     fecha: byId('qFecha').value || todayISO(),
-    validez: Number(byId('qValidez').value)||7,
-    moneda: byId('qMoneda').value,
-    cliente: byId('qCliente').value,
-    rfc: byId('qRFC').value,
-    email: byId('qEmail').value,
-    telefono: byId('qPhone').value,
-    vehiculo: byId('qVehiculo').value,
-    placas: byId('qPlacas').value,
-    vin: byId('qVIN').value,
-    km: byId('qKM').value,
+    validez: Number(byId('qValidez').value) || 7,
     notas: byId('qNotas').value,
     condiciones: byId('qCond').value,
-    items, totales: tot
+    estatus: 'borrador', // Estatus inicial
+    items: items // Array de items
   };
 }
 

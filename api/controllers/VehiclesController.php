@@ -5,8 +5,8 @@ class VehiclesController {
 
     public function __construct($db) {
         $this->db = $db;
-        require_once 'auth/validate_token.php';
-        require_once 'models/Vehicle.php';
+        require_once dirname(__DIR__) . '/auth/validate_token.php';
+        require_once dirname(__DIR__) . '/models/Vehicle.php';
         $this->vehicle = new Vehicle($this->db);
         // Todas las acciones en este controlador requieren un token válido.
         validate_token();

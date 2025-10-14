@@ -5,8 +5,8 @@ class InventoriesController {
 
     public function __construct($db) {
         $this->db = $db;
-        require_once 'auth/validate_token.php';
-        require_once 'models/Inventory.php';
+        require_once dirname(__DIR__) . '/auth/validate_token.php';
+        require_once dirname(__DIR__) . '/models/Inventory.php';
         $this->inventory = new Inventory($this->db);
         validate_token();
     }

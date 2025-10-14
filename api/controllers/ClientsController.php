@@ -6,11 +6,9 @@ class ClientsController {
 
     public function __construct($db) {
         $this->db = $db;
-        // Cargar el validador de token y el modelo de cliente
-        require_once 'auth/validate_token.php';
-        require_once 'models/Client.php';
+        require_once dirname(__DIR__) . '/auth/validate_token.php';
+        require_once dirname(__DIR__) . '/models/Client.php';
         $this->client = new Client($this->db);
-        // Validar el token y obtener los datos del usuario autenticado
         $this->auth_user = validate_token();
     }
 

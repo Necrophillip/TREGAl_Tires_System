@@ -1,7 +1,6 @@
 <?php
 // Incluir la librería JWT
-require_once 'vendor/autoload.php';
-use Firebase\JWT\JWT;
+// No es necesario, ya se carga en el index.php principal
 
 class UsersController {
     private $db;
@@ -10,7 +9,7 @@ class UsersController {
     public function __construct($db) {
         $this->db = $db;
         // Incluir el modelo de usuario
-        require_once 'models/User.php';
+        require_once dirname(__DIR__) . '/models/User.php';
         $this->user = new User($this->db);
     }
 
@@ -117,18 +116,22 @@ class UsersController {
                     } else {
                         http_response_code(401); // Unauthorized
                         echo json_encode(['message' => 'Contraseña incorrecta.']);
+                        exit();
                     }
                 } else {
                     http_response_code(401); // Unauthorized
                     echo json_encode(['message' => 'El usuario está inactivo.']);
+                    exit();
                 }
             } else {
                 http_response_code(404); // Not Found
                 echo json_encode(['message' => 'El usuario no existe.']);
+                exit();
             }
         } else {
             http_response_code(400); // Bad Request
             echo json_encode(['message' => 'Datos de login incompletos.']);
+            exit();
         }
     }
 }

@@ -5,8 +5,8 @@ class WorkordersController {
 
     public function __construct($db) {
         $this->db = $db;
-        require_once 'auth/validate_token.php';
-        require_once 'models/WorkOrder.php';
+        require_once dirname(__DIR__) . '/auth/validate_token.php';
+        require_once dirname(__DIR__) . '/models/WorkOrder.php';
         $this->work_order = new WorkOrder($this->db);
         validate_token();
     }
