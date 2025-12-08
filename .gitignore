@@ -1,0 +1,34 @@
+# --- Python General ---
+__pycache__/
+*.py[cod]
+*$py.class
+
+# --- Entornos Virtuales (Virtual Environments) ---
+venv/
+.venv/
+env/
+.env
+
+# --- Base de Datos (IMPORTANTE) ---
+# Ignoramos la DB real para no subir datos de clientes al repo
+*.db
+*.sqlite3
+taller.db
+
+# --- PyInstaller (Para cuando crees el .exe) ---
+# No queremos subir el ejecutable ni los temporales de construcción
+build/
+dist/
+*.spec
+
+# --- IDEs (Configuraciones de tu editor de código) ---
+.vscode/
+.idea/
+
+# --- Sistema Operativo ---
+.DS_Store
+Thumbs.db
+
+# --- Logs y Temporales ---
+*.log
+.nicegui/

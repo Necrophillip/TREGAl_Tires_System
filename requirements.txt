@@ -1,0 +1,6 @@
+nicegui>=1.4.0
+pandas
+pyinstaller
+watchfiles
+pywebview
+reportlab
