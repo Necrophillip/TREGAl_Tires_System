@@ -1,10 +1,20 @@
-import sqlite3
+import sqlite3  # <--- ESTA ES LA QUE TE FALTA
+import sys      # <--- Esta es para el .exe
 import os
 from datetime import datetime
 from typing import List, Dict
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+# --- LÓGICA CRÍTICA PARA WINDOWS ---
+if getattr(sys, 'frozen', False):
+    # Si es .exe, usa la carpeta donde está el archivo .exe
+    BASE_DIR = os.path.dirname(sys.executable)
+else:
+    # Si es script, usa la carpeta del archivo .py
+    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
 DB_NAME = os.path.join(BASE_DIR, "taller.db")
+
+# ... El resto del código sigue igual ...
 
 def init_db():
     conn = sqlite3.connect(DB_NAME)
