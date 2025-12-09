@@ -102,7 +102,7 @@ if __name__ in {"__main__", "__mp_main__"}:
     ui.run(
         title='TREGAL Tires System',
         host='0.0.0.0',
-        port=80,
+        port=8080,
         native=False,
         reload=False,
         storage_secret='clave_super_secreta_tregal_2025'
