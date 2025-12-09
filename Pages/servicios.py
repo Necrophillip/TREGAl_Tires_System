@@ -5,6 +5,16 @@ from datetime import datetime
 
 def show():
     # --- Definición de funciones ---
+
+    # 1. FUNCIÓN DE LIMPIEZA (NUEVA)
+    def limpiar_valor_moneda(valor):
+        """Limpia el símbolo de moneda ($) y comas (,) para evitar errores de conversión."""
+        if isinstance(valor, str):
+            valor = valor.replace('$', '').replace(',', '').strip()
+        try:
+            return float(valor or 0.0)
+        except ValueError:
+            return 0.0
     
     def actualizar_tabla():
         # Actualiza el tablero de activos
@@ -77,7 +87,9 @@ def show():
                     ui.button(icon='refresh', on_click=refrescar_lista_autos).props('flat round dense color=blue').tooltip('Actualizar lista')
 
                 descripcion = ui.textarea('Descripción del Problema / Solicitud').classes('w-full').props('rows=3')
-                costo_inicial = ui.number('Costo Revisión (Inicial)', value=0, format='$ %.2f').classes('w-full')
+                
+                # CORRECCIÓN IMPORTANTE: Quitamos format='$ %.2f' para evitar el crash, usamos prefix.
+                costo_inicial = ui.number('Costo Revisión (Inicial)', value=0).classes('w-full').props('prefix="$" step=0.01')
 
                 def crear_orden():
                     if not app.storage.user.get('authenticated', False):
@@ -87,7 +99,10 @@ def show():
                     if not select_auto.value or not descripcion.value:
                         ui.notify('Faltan datos (Vehículo o Descripción)', type='warning'); return
                     
-                    db.crear_servicio(select_auto.value, descripcion.value, costo_inicial.value or 0)
+                    # 2. USO DE LIMPIEZA
+                    costo_limpio = limpiar_valor_moneda(costo_inicial.value)
+
+                    db.crear_servicio(select_auto.value, descripcion.value, costo_limpio)
                     ui.notify('Orden de servicio creada exitosamente', type='positive')
                     select_auto.value = None; descripcion.value = ''; costo_inicial.value = 0
                     actualizar_tabla()
@@ -112,7 +127,7 @@ def show():
                 rows = db.obtener_servicios_activos()
                 tabla_servicios = ui.table(columns=columns, rows=rows, row_key='id', pagination=5).classes('w-full')
                 
-                # Conexión de slots (Se mantiene)
+                # Conexión de slots (Se mantiene TU código original)
                 tabla_servicios.add_slot('body-cell-id', r'''
                     <q-td :props="props">
                         <div class="flex items-center gap-1">
@@ -177,7 +192,12 @@ def show():
                 ui.navigate.to('/login?expired=expired=true')
                 return
             if not sel_trab_com.value: return
-            db.agregar_tarea_comision(dialog_comision.sid, sel_trab_com.value, txt_tarea.value, float(num_costo.value or 0), float(num_porc.value or 0))
+
+            # 3. USO DE LIMPIEZA
+            costo_limpio = limpiar_valor_moneda(num_costo.value)
+            porc_limpio = limpiar_valor_moneda(num_porc.value)
+
+            db.agregar_tarea_comision(dialog_comision.sid, sel_trab_com.value, txt_tarea.value, costo_limpio, porc_limpio)
             ui.notify('Mano de obra agregada', type='positive')
             dialog_comision.close()
             actualizar_tabla()
