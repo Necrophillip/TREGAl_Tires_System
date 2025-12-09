@@ -1,111 +1,117 @@
-from nicegui import ui
+from nicegui import ui, app
 from Db import database as db
+from datetime import datetime
 
 def show():
-    with ui.column().classes('w-full h-full p-4 gap-4 bg-gray-50'):
+    # --- Contenedor Principal con fondo suave ---
+    with ui.column().classes('w-full h-full p-4 gap-4 bg-slate-50'):
         
-        with ui.row().classes('items-center gap-2 mb-4'):
-            ui.label('Resumen Financiero (En Vivo)').classes('text-2xl font-bold text-gray-800')
-            # Un spinner chiquito para que se vea que está "vivo"
-            ui.spinner('dots', size='lg', color='green')
-
-        # --- 1. DEFINIR VARIABLES DE UI (ELEMENTOS VACÍOS PRIMERO) ---
-        
-        # Tarjetas KPI
-        lbl_ingreso_real = None
-        lbl_pendiente = None
-        lbl_autos = None
-        lbl_alertas = None
-        
-        # Gráfica y Tabla
-        chart_estado = None
-        tabla_alertas = None
-
-        # --- 2. ESTRUCTURA VISUAL ---
-        
-        with ui.row().classes('w-full gap-4 justify-between'):
+        # ==========================================
+        # 1. ENCABEZADO (Bienvenida + Logout)
+        # ==========================================
+        with ui.row().classes('w-full justify-between items-center mb-2'):
+            with ui.column().classes('gap-0'):
+                # Intenta obtener el usuario, si no hay session usa "Usuario"
+                user = app.storage.user.get('username', 'Admin')
+                ui.label(f'Hola, {user} 👋').classes('text-2xl font-bold text-slate-800')
+                ui.label(datetime.now().strftime('%A, %d de %B %Y')).classes('text-sm text-slate-500 capitalize')
             
-            # Tarjeta 1: INGRESOS REALES
-            with ui.card().classes('w-1/4 p-4 shadow-md border-l-8 border-green-600 items-center bg-white'):
-                ui.label('Ingresos Reales (Caja)').classes('text-gray-500 font-medium')
-                # Guardamos la referencia en la variable
-                lbl_ingreso_real = ui.label('$ 0.00').classes('text-4xl font-bold text-green-700')
-                ui.label('Ordenes cerradas este mes').classes('text-xs text-green-400')
-                ui.icon('paid', size='md').classes('text-green-200 absolute top-2 right-2')
+            # Botón Logout Rápido
+            ui.button('Cerrar Sesión', icon='logout', 
+                      on_click=lambda: (app.storage.user.clear(), ui.navigate.to('/login'))) \
+                      .props('outline color=grey-7 size=sm round')
 
-            # Tarjeta 2: POR COBRAR
-            with ui.card().classes('w-1/4 p-4 shadow-md border-l-8 border-orange-400 items-center bg-white'):
-                ui.label('Pendiente por Cobrar').classes('text-gray-500 font-medium')
-                lbl_pendiente = ui.label('$ 0.00').classes('text-3xl font-bold text-orange-600')
-                ui.label('Trabajos en curso').classes('text-xs text-orange-400')
-                ui.icon('pending_actions', size='md').classes('text-orange-200 absolute top-2 right-2')
+        # ==========================================
+        # 2. TARJETAS KPI (Indicadores Clave)
+        # ==========================================
+        resumen = db.obtener_resumen_mensual()
+        
+        with ui.row().classes('w-full gap-4 no-wrap'):
+            # Tarjeta 1: Cobrado
+            with ui.card().classes('w-1/4 p-3 shadow-sm border-l-4 border-green-500'):
+                ui.label('Ingresos Mes').classes('text-xs font-bold text-gray-400 uppercase')
+                ui.label(f"${resumen['cobrado_mes']:,.2f}").classes('text-xl font-bold text-slate-700')
+                ui.icon('payments', color='green').classes('absolute top-2 right-2 text-xl opacity-20')
+
+            # Tarjeta 2: Por Cobrar
+            with ui.card().classes('w-1/4 p-3 shadow-sm border-l-4 border-orange-400'):
+                ui.label('Por Cobrar').classes('text-xs font-bold text-gray-400 uppercase')
+                ui.label(f"${resumen['pendiente_mes']:,.2f}").classes('text-xl font-bold text-slate-700')
+                ui.icon('pending_actions', color='orange').classes('absolute top-2 right-2 text-xl opacity-20')
 
             # Tarjeta 3: Autos Activos
-            with ui.card().classes('w-1/4 p-4 shadow-md border-l-8 border-blue-500 items-center'):
-                ui.label('Autos en Patio').classes('text-gray-500 font-medium')
-                lbl_autos = ui.label('0').classes('text-3xl font-bold text-blue-700')
-                ui.icon('garage', size='md').classes('text-blue-200 absolute top-2 right-2')
+            with ui.card().classes('w-1/4 p-3 shadow-sm border-l-4 border-blue-500'):
+                ui.label('En Taller').classes('text-xs font-bold text-gray-400 uppercase')
+                ui.label(f"{resumen['autos_activos']} autos").classes('text-xl font-bold text-slate-700')
+                ui.icon('garage', color='blue').classes('absolute top-2 right-2 text-xl opacity-20')
 
-        # --- GRAFICAS ---
-        with ui.row().classes('w-full gap-6 mt-4'):
+            # Tarjeta 4: Alertas Stock
+            with ui.card().classes('w-1/4 p-3 shadow-sm border-l-4 border-red-500'):
+                ui.label('Stock Bajo').classes('text-xs font-bold text-gray-400 uppercase')
+                ui.label(f"{resumen['alertas_stock']} items").classes('text-xl font-bold text-slate-700')
+                ui.icon('inventory_2', color='red').classes('absolute top-2 right-2 text-xl opacity-20')
+
+        # ==========================================
+        # 3. SECCIÓN DIVIDIDA (CRM vs Gráfico)
+        # ==========================================
+        with ui.row().classes('w-full gap-4 items-start'):
             
-            with ui.card().classes('w-2/3 p-4 shadow-lg'):
-                ui.label('Estado del Taller').classes('text-lg font-bold text-gray-700 mb-2')
-                
-                # Inicializamos la gráfica vacía
-                chart_estado = ui.echart({
-                    'tooltip': {'trigger': 'item'},
-                    'legend': {'orient': 'vertical', 'left': 'left'},
-                    'series': [
-                        {
-                            'name': 'Ordenes',
-                            'type': 'pie',
-                            'radius': '70%',
-                            'data': [], # Vacío al inicio
-                            'emphasis': {'itemStyle': {'shadowBlur': 10, 'shadowOffsetX': 0, 'shadowColor': 'rgba(0, 0, 0, 0.5)'}}
-                        }
+            # --- IZQUIERDA: ALERTA DE RETENCIÓN (Clientes Vencidos) ---
+            # Ocupa 2/3 del espacio (w-2/3)
+            with ui.card().classes('w-2/3 shadow-md'):
+                with ui.row().classes('w-full justify-between items-center border-b pb-2 mb-2'):
+                    with ui.row().classes('items-center gap-2'):
+                        ui.icon('notifications_active', color='orange').classes('text-lg')
+                        ui.label('Recordatorios de Servicio').classes('text-md font-bold text-slate-700')
+                    
+                    # Filtramos clientes vencidos
+                    todos_clientes = db.obtener_clientes()
+                    vencidos = [c for c in todos_clientes if "Vencido" in c.get('status_alerta', '')]
+                    
+                    if vencidos:
+                        ui.badge(f'{len(vencidos)}', color='red').props('floating')
+
+                if not vencidos:
+                    with ui.column().classes('w-full items-center justify-center py-6 text-gray-400'):
+                        ui.icon('check_circle', size='3em', color='green')
+                        ui.label('¡Excelente! Todos los clientes están al día.')
+                else:
+                    # Tabla Compacta
+                    columns_crm = [
+                        {'name': 'nombre', 'label': 'Cliente', 'field': 'nombre', 'align': 'left', 'classes': 'font-semibold text-sm'},
+                        {'name': 'telefono', 'label': 'Teléfono', 'field': 'telefono', 'align': 'left', 'classes': 'text-sm'},
+                        {'name': 'ultimo_servicio_fmt', 'label': 'Última Visita', 'field': 'ultimo_servicio_fmt', 'align': 'center', 'classes': 'text-sm'},
+                        {'name': 'status_alerta', 'label': 'Estado', 'field': 'status_alerta', 'align': 'center', 'classes': 'text-red-600 font-bold text-xs bg-red-50 rounded px-1'},
                     ]
-                }).classes('h-64 w-full')
+                    ui.table(columns=columns_crm, rows=vencidos, pagination=5).classes('w-full').props('dense flat')
 
-            # Mini tabla alertas
-            with ui.card().classes('w-1/3 p-4 shadow-lg border-red-100 border'):
-                ui.label('Alertas de Stock').classes('text-lg font-bold text-red-700')
-                lbl_alertas = ui.label('').classes('text-sm italic mb-1')
-                tabla_alertas = ui.table(
-                    columns=[{'name': 'd', 'label': 'Producto', 'field': 'descripcion'}, {'name': 'c', 'label': 'Cant', 'field': 'cantidad'}],
-                    rows=[]
-                ).classes('w-full mt-2')
-
-        # --- 3. LA FUNCIÓN MÁGICA DE REFRESH ---
-        def refrescar_datos():
-            # A. Obtener datos frescos de la DB
-            metrics = db.obtener_resumen_mensual()
-            data_grafica = db.obtener_conteo_estados_servicios()
-            faltantes = db.obtener_productos_bajo_stock()
-
-            # B. Actualizar Textos de Etiquetas
-            lbl_ingreso_real.text = f"${metrics['cobrado_mes']:,.2f}"
-            lbl_pendiente.text = f"${metrics['pendiente_mes']:,.2f}"
-            lbl_autos.text = str(metrics['autos_activos'])
-            
-            # C. Actualizar Gráfica
-            # ECharts requiere actualizar el diccionario 'options' y llamar update()
-            chart_estado.options['series'][0]['data'] = data_grafica
-            chart_estado.update()
-
-            # D. Actualizar Tabla de Stock
-            if not faltantes:
-                tabla_alertas.visible = False
-                lbl_alertas.text = "Stock Saludable 👍"
-            else:
-                tabla_alertas.visible = True
-                lbl_alertas.text = "Urge reponer:"
-                tabla_alertas.rows = faltantes
-                tabla_alertas.update()
-
-        # --- 4. ACTIVAR EL TIMER ---
-        # Llamamos una vez al inicio para que no empiece vacío
-        refrescar_datos()
-        
-        # Configuramos el timer para que corra cada 5 segundos
-        ui.timer(5.0, refrescar_datos)
+            # --- DERECHA: GRÁFICO DONA (Optimizado) ---
+            # Ocupa 1/3 del espacio (w-1/3)
+            with ui.card().classes('w-1/3 shadow-md flex flex-col items-center p-4'):
+                ui.label('Estado del Taller').classes('text-sm font-bold text-gray-500 w-full text-center mb-2')
+                
+                datos_grafico = db.obtener_conteo_estados_servicios()
+                
+                if not datos_grafico:
+                    ui.label('Sin datos aún').classes('text-gray-400 py-10')
+                else:
+                    # Gráfico ECharts optimizado
+                    ui.echart({
+                        'tooltip': {'trigger': 'item'},
+                        'legend': {'bottom': '0%', 'left': 'center', 'itemWidth': 10, 'itemHeight': 10},
+                        'series': [
+                            {
+                                'name': 'Servicios',
+                                'type': 'pie',
+                                'radius': ['50%', '70%'], # <--- ESTO LO HACE DONA
+                                'center': ['50%', '45%'],
+                                'avoidLabelOverlap': False,
+                                'itemStyle': {'borderRadius': 4, 'borderColor': '#fff', 'borderWidth': 2},
+                                'label': {'show': False, 'position': 'center'},
+                                'emphasis': {
+                                    'label': {'show': True, 'fontSize': '16', 'fontWeight': 'bold'}
+                                },
+                                'data': datos_grafico
+                            }
+                        ]
+                    }).classes('w-full h-48') # Altura fija pequeña

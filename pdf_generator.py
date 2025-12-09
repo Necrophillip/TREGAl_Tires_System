@@ -9,26 +9,23 @@ def generar_pdf_cotizacion(datos, dias_vigencia):
     """
     Genera un PDF elegante para TREGAL Tires.
     """
-    # --- CORRECCIÓN AQUÍ: Usamos 'id' en lugar de 'servicio_id' ---
     filename = f"Cotizacion_{datos['id']}.pdf" 
     
     c = canvas.Canvas(filename, pagesize=LETTER)
     width, height = LETTER
     
-    # --- COLORES DE MARCA (TREGAL TIRES) ---
-    COLOR_PRIMARIO = colors.HexColor("#1e293b") # Azul oscuro
-    COLOR_ACENTO = colors.HexColor("#ea580c")   # Naranja
+    # --- COLORES DE MARCA ---
+    COLOR_PRIMARIO = colors.HexColor("#1e293b") 
+    COLOR_ACENTO = colors.HexColor("#ea580c")   
     COLOR_GRIS = colors.HexColor("#64748b")
     
     # ==========================================
     # 1. ENCABEZADO
     # ==========================================
     
-    # Franja lateral
     c.setFillColor(COLOR_PRIMARIO)
     c.rect(0, 0, 30, height, fill=1, stroke=0)
     
-    # Logo / Nombre
     c.setFillColor(COLOR_PRIMARIO)
     c.setFont("Helvetica-Bold", 28)
     c.drawString(50, height - 50, "TREGAL TIRES")
@@ -37,20 +34,17 @@ def generar_pdf_cotizacion(datos, dias_vigencia):
     c.setFont("Helvetica-Bold", 10)
     c.drawString(50, height - 65, "ESPECIALISTAS AUTOMOTRICES")
 
-    # Contacto
     c.setFillColor(COLOR_GRIS)
     c.setFont("Helvetica", 9)
     c.drawString(50, height - 85, "Dirección: Av. Industrias #123, San Luis Potosí")
     c.drawString(50, height - 97, "Tel: (444) 123-4567 | Email: contacto@tregaltires.com")
 
-    # Título y Folio
     c.setFillColor(colors.black)
     c.setFont("Helvetica-Bold", 24)
     c.drawRightString(width - 30, height - 50, "COTIZACIÓN")
     
     c.setFillColor(COLOR_ACENTO)
     c.setFont("Helvetica-Bold", 14)
-    # --- CORRECCIÓN AQUÍ TAMBIÉN: 'id' ---
     c.drawRightString(width - 30, height - 70, f"#{datos['id']:04d}") 
 
     # ==========================================
@@ -66,20 +60,28 @@ def generar_pdf_cotizacion(datos, dias_vigencia):
     c.setFont("Helvetica", 11)
     c.drawString(50, y_bloque - 15, datos['cliente'])
     c.setFont("Helvetica", 9)
-    # Manejo seguro si no hay teléfono
     tel_str = datos['telefono'] if datos['telefono'] else "Sin teléfono"
     c.drawString(50, y_bloque - 30, tel_str)
 
-    # Vehículo
+    # --- SECCIÓN VEHÍCULO (ACTUALIZADA) ---
     c.setFillColor(COLOR_PRIMARIO)
     c.setFont("Helvetica-Bold", 11)
     c.drawString(250, y_bloque, "VEHÍCULO:")
+    
     c.setFillColor(colors.black)
     c.setFont("Helvetica", 11)
     c.drawString(250, y_bloque - 15, f"{datos['modelo']} ({datos['anio']})")
+    
     c.setFont("Helvetica", 9)
-    c.drawString(250, y_bloque - 30, f"Placas: {datos['placas']}")
-    c.drawString(250, y_bloque - 42, f"Color: {datos['color']}")
+    c.drawString(250, y_bloque - 28, f"Placas: {datos['placas']}  |  Color: {datos['color']}")
+    
+    # Nuevos Datos seguros
+    eco = datos.get('num_economico') or "N/A"
+    vin_num = datos.get('vin') or "N/A"
+    kms = datos.get('kilometraje') or "N/A"
+
+    c.drawString(250, y_bloque - 40, f"No. Eco: {eco}  |  Kms: {kms}")
+    c.drawString(250, y_bloque - 52, f"VIN: {vin_num}")
 
     # Fechas
     fecha_emision = datetime.now()
@@ -101,7 +103,7 @@ def generar_pdf_cotizacion(datos, dias_vigencia):
 
     # Línea divisoria
     c.setStrokeColor(colors.lightgrey)
-    c.line(50, y_bloque - 60, width - 30, y_bloque - 60)
+    c.line(50, y_bloque - 65, width - 30, y_bloque - 65)
 
     # ==========================================
     # 3. TABLA DE PRODUCTOS
@@ -124,8 +126,6 @@ def generar_pdf_cotizacion(datos, dias_vigencia):
         data_tabla.append(row)
         total_general += item['total']
     
-    # Estilo Tabla
-    # Ajustamos altura dinámica si hay muchos items
     col_widths = [40, 280, 80, 80, 80]
     tabla = Table(data_tabla, colWidths=col_widths)
     
