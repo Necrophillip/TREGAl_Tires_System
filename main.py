@@ -1,102 +1,105 @@
-from nicegui import ui, app, client # 'client' ya debe estar importado
+from nicegui import ui, app
 from multiprocessing import freeze_support
 from Db import database as db
 import interfaz
 from datetime import timedelta
 from starlette.requests import Request 
 import asyncio
+from Pages import tracking_publico #
 
-# --- COSA 1: OBTENER TIEMPO DE EXPIRACIÓN ---
+# --- CONFIGURACIÓN ---
 TIEMPO_INACTIVIDAD = 30 
 
-# --- CONFIGURACIÓN DE ACCESO ---
-USUARIO_SECRETO = "Tregal"
-PASSWORD_SECRETO = "Tregal3105#"
-
 async def check_login():
-    # ... (Lógica de Login, se mantiene)
-    if username.value == USUARIO_SECRETO and password.value == PASSWORD_SECRETO:
+    user = db.verificar_credenciales(username.value, password.value)
+    
+    if user:
         app.storage.user['authenticated'] = True
+        app.storage.user['username'] = user['username']
+        app.storage.user['rol'] = user['rol']
+        app.storage.user['user_id'] = user['id']
+        # Guardamos el ID del trabajador vinculado para filtrar tareas
+        app.storage.user['trabajador_id'] = user['trabajador_id']
+        
         app.storage.user.expires = timedelta(minutes=TIEMPO_INACTIVIDAD)
+        
+        ui.notify(f'Bienvenido {user["username"]} ({user["rol"]})', type='positive')
         await asyncio.sleep(0.5) 
         ui.navigate.to('/') 
     else:
-        ui.notify('Contraseña incorrecta', color='negative')
+        ui.notify('Usuario o contraseña incorrectos', color='negative')
+        password.value = '' 
 
 def logout():
-    """Cierra sesión, desconecta el WebSocket y redirige."""
+    """Cierra sesión y redirige."""
     app.storage.user.clear()
-    client.disconnect() 
+    # Eliminamos client.disconnect() que causaba error
     ui.navigate.to('/login') 
 
 @ui.page('/')
 def home_page():
     
-    # 1. VERIFICACIÓN CRÍTICA DE SEGURIDAD (PRIMER FILTRO)
     if not app.storage.user.get('authenticated', False):
         return ui.navigate.to('/login?expired=true')
 
-    # --- WATCHDOG DE SESIÓN (FILTRO ACTIVO Y CONSTANTE) ---
+    # --- WATCHDOG DE SESIÓN ---
     def check_session_validity():
-        """Verifica la bandera de autenticación cada 0.5s."""
         if not app.storage.user.get('authenticated', False):
-            # 1. Detener el temporizador inmediatamente (crucial para evitar bucles)
             session_watchdog.deactivate() 
-            # 2. Forzar la desconexión del WebSocket y redirigir
-            client.disconnect()
             ui.navigate.to('/login?expired=true')
             return
 
-    # Creamos y activamos el temporizador global
-    session_watchdog = ui.timer(0.5, check_session_validity, active=True)
-    # ----------------------------------------------------
+    session_watchdog = ui.timer(2.0, check_session_validity, active=True) # Aumenté a 2s para menos carga
     
-    # 2. BOTÓN DE SALIDA (Se mantiene)
-    with ui.header().classes('bg-slate-900 text-white shadow-md'):
+    # 2. CABECERA
+    rol_actual = app.storage.user.get('rol', 'tecnico').upper()
+    usuario_actual = app.storage.user.get('username', '').capitalize()
+    
+    with ui.header().classes('bg-slate-900 text-white shadow-md items-center'):
         ui.label('TREGAL Tires System').classes('text-xl font-bold tracking-wider')
         ui.space()
-        ui.button('Salir', icon='logout', on_click=logout).props('flat color=white')
+        with ui.row().classes('items-center gap-2 mr-4'):
+            ui.icon('account_circle')
+            ui.label(f"{usuario_actual} | {rol_actual}").classes('text-sm font-light')
+            
+        ui.button('Salir', icon='logout', on_click=logout).props('flat color=white dense')
 
-    # 3. CARGAR TU INTERFAZ (Tabs)
+    # 3. CARGAR INTERFAZ
     interfaz.crear_paginas()
+
 
 @ui.page('/login')
 def login_page(request: Request): 
-    # ... (Lógica de Login Page, se mantiene)
-    # ...
-    # Se mantiene igual que la última versión funcional
-    # ...
-    
-    # LÓGICA DEL POPUP
-    if request.query_params.get('expired'):
-        ui.notification('⚠️ Sesión expirada. Debes iniciar sesión primero.', 
-                        position='top', 
-                        color='negative', 
-                        timeout=5000).classes('shadow-lg border border-red-500') 
-
-    # REDIRECCIÓN AL INICIO (Si la sesión sigue activa)
     if app.storage.user.get('authenticated', False):
         return ui.navigate.to('/')
-        
-    with ui.card().classes('absolute-center w-96 shadow-lg'):
-        ui.label('🚗 TREGAL System').classes('text-h5 text-center w-full mb-4')
+
+    if request.query_params.get('expired'):
+        ui.notification('⚠️ Sesión expirada.', position='top', color='negative')
+
+    with ui.card().classes('absolute-center w-96 shadow-lg p-8'):
+        ui.label('🚗 TREGAL System').classes('text-h5 text-center w-full mb-6 font-bold text-slate-700')
         
         global username, password
-        username = ui.input('Usuario').classes('w-full')
-        password = ui.input('Contraseña', password=True, password_toggle_button=True).classes('w-full').on('keydown.enter', check_login)
+        username = ui.input('Usuario').classes('w-full mb-2').props('autofocus')
+        password = ui.input('Contraseña', password=True, password_toggle_button=True).classes('w-full mb-6').on('keydown.enter', check_login)
         
-        ui.button('Entrar', on_click=check_login).classes('w-full mt-4 bg-primary')
+        ui.button('Iniciar Sesión', on_click=check_login).classes('w-full bg-slate-800 text-white')
+        
+        ui.label('Acceso exclusivo para personal autorizado').classes('text-xs text-gray-400 text-center w-full mt-4')
 
+# --- RUTA PÚBLICA (Tracking Cliente) --- 
+# ¡OJO! Esta ruta NO lleva verificación de login
 
+@ui.page('/status/{uuid_publico}')
+def track_service(uuid_publico: str):
+    tracking_publico.show_page(uuid_publico)
 if __name__ in {"__main__", "__mp_main__"}:
     freeze_support()
     db.init_db()
     
-    # Leemos el tiempo de expiración de la DB
     try:
         TIEMPO_INACTIVIDAD = db.get_tiempo_expiracion_minutos()
-    except Exception:
-        # Fallback si falla la DB
+    except:
         TIEMPO_INACTIVIDAD = 30
         
     ui.run(
