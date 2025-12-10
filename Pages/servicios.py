@@ -83,7 +83,6 @@ def show():
                 ui.icon('handyman', size='lg', color='primary')
                 titulo = 'Control Maestro' if es_admin else 'Mis Asignaciones'
                 ui.label(titulo).classes('text-2xl font-bold text-gray-800')
-                ui.label(f'DEBUG: Admin={es_admin}, Worker ID={user_worker_id}, Tipo={type(user_worker_id)}').classes('bg-yellow-200 text-xs')
 
         # 2. CONTENEDOR PRINCIPAL
         with ui.row().classes('w-full flex-nowrap items-start gap-6'):
