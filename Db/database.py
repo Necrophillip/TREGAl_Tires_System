@@ -287,15 +287,25 @@ def obtener_servicios_activos(filtro_trabajador_id=None):
     return [dict(row) for row in rows]
 
 # UPDATE RC3: Cerrar servicio requiere Método y Referencia
+# Corrección Crítica Módulo 4: Guardar costo_final
 def cerrar_servicio(servicio_id, ticket_id, trabajador_id, costo_final, metodo_pago="Efectivo", ref_pago=""):
     conn = sqlite3.connect(DB_NAME)
     fecha = datetime.now().strftime("%Y-%m-%d %H:%M")
+    
     conn.cursor().execute("""
         UPDATE servicios 
-        SET estado='Terminado', estatus_detalle='Entregado', ticket_id=?, cobrado_por=?, 
-            costo_estimado=?, fecha_cierre=?, metodo_pago=?, referencia_pago=? 
+        SET estado='Terminado', 
+            estatus_detalle='Entregado', 
+            ticket_id=?, 
+            cobrado_por=?, 
+            costo_estimado=?,     -- Mantenemos actualizado el estimado por consistencia
+            costo_final=?,        -- ✅ NUEVO: Aquí se guarda el dinero real para Reportes
+            fecha_cierre=?, 
+            metodo_pago=?, 
+            referencia_pago=? 
         WHERE id=?""", 
-        (ticket_id, trabajador_id, costo_final, fecha, metodo_pago, ref_pago, servicio_id)
+        # Nota que pasamos 'costo_final' DOS VECES en los parámetros (una para estimado, una para final)
+        (ticket_id, trabajador_id, costo_final, costo_final, fecha, metodo_pago, ref_pago, servicio_id)
     )
     conn.commit(); conn.close()
 
