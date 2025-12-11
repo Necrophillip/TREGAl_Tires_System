@@ -33,7 +33,7 @@ def crear_paginas():
             tab_trabajadores = ui.tab('RRHH / Nómina', icon='engineering')
 
     # 3. PANELES DE CONTENIDO
-    with ui.tab_panels(tabs, value=tab_dashboard,animated=FALSE).classes('w-full h-full bg-transparent p-0'):
+    with ui.tab_panels(tabs, value=tab_dashboard,animated=False).classes('w-full h-full bg-transparent p-0'):
         
         # Paneles Comunes
         with ui.tab_panel(tab_dashboard): dashboard.show()
