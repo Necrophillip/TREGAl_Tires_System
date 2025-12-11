@@ -12,7 +12,10 @@ def show():
         with ui.row().classes('w-full items-center gap-2 mb-4 border-b pb-2'):
             ui.icon('settings', size='md', color='slate-700')
             ui.label('Configuración General').classes('text-xl font-bold text-slate-800')
-        
+            ui.label('Impuestos').classes('text-xs font-bold text-gray-500 uppercase mt-4')
+        with ui.row().classes('w-full items-center'):
+            tasa_iva = ui.number('Tasa IVA (%)', value=db.get_tasa_iva()).classes('w-1/2').props('suffix=%')
+            ui.label('Se desglosará en tickets y nómina.').classes('text-xs text-gray-400 italic')
         # --- Campo: WhatsApp ---
         ui.label('Contacto Taller (WhatsApp)').classes('text-xs font-bold text-gray-500 uppercase mt-2')
         num_whatsapp = ui.input(value=db.get_whatsapp_taller()).props('type=tel prefix="MX (+52)"').classes('w-full')
@@ -31,6 +34,7 @@ def show():
             db.set_whatsapp_taller(num_whatsapp.value)
             db.set_stock_minimo(int(min_stock.value or 5))
             db.set_tiempo_expiracion_minutos(int(min_sesion.value or 30))
+            db.set_tasa_iva(float(tasa_iva.value or 0))
             
             ui.notify('✅ Configuración actualizada correctamente', type='positive')
             dialog_settings.close()

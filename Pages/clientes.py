@@ -2,10 +2,47 @@ from nicegui import ui, app
 from Db import database as db
 
 def show():
+    # --- Variables de Estado (Para el Buscador) ---
+    todos_los_clientes = []
+    
+    # --- Referencias UI (Declarar antes para usar en funciones) ---
+    input_busqueda = None 
+
     # --- Definición de Funciones ---
-    def actualizar_tabla():
-        tabla_clientes.rows = db.obtener_clientes()
+    def filtrar(e):
+        """Filtra la tabla en memoria por Nombre, Teléfono o Email"""
+        # Validación robusta (Evento UI vs Diccionario manual)
+        if isinstance(e, dict):
+            val = e.get('value')
+        else:
+            val = e.value
+            
+        texto = str(val).lower() if val else ""
+        
+        if not texto:
+            tabla_clientes.rows = todos_los_clientes
+        else:
+            # Filtramos por Nombre, Teléfono o Email
+            tabla_clientes.rows = [
+                c for c in todos_los_clientes
+                if texto in str(c['nombre']).lower() 
+                or texto in str(c['telefono']).lower()
+                or texto in str(c['email']).lower()
+            ]
         tabla_clientes.update()
+
+    def actualizar_tabla():
+        nonlocal todos_los_clientes
+        # 1. Traemos todo de la DB a memoria
+        todos_los_clientes = db.obtener_clientes()
+        
+        # 2. Si el buscador tiene texto, reaplicamos el filtro
+        # (Usamos el 'safeguard' de diccionario para evitar errores)
+        if input_busqueda and input_busqueda.value:
+            filtrar({'value': input_busqueda.value})
+        else:
+            tabla_clientes.rows = todos_los_clientes
+            tabla_clientes.update()
         
     def eliminar_cliente(cliente_id):
         # --- GUARDIA DE SEGURIDAD ---
@@ -76,6 +113,7 @@ def show():
                     if not nombre.value:
                         ui.notify('El nombre es obligatorio', type='warning'); return
                     
+                    # Usamos argumentos posicionales según tu definición en database.py
                     db.agregar_cliente(nombre.value, telefono.value, email.value, notas.value)
                     ui.notify(f'Cliente {nombre.value} guardado!', type='positive')
                     
@@ -86,10 +124,18 @@ def show():
 
             # 2. Panel Derecho: Tabla de Clientes
             with ui.card().classes('flex-grow w-0 p-4 shadow-lg'):
+                
+                # CABECERA CON BUSCADOR
                 with ui.row().classes('w-full justify-between items-center mb-2'):
                     ui.label('Directorio & Estado').classes('text-lg font-bold text-slate-700')
                     
-                    ui.button(icon='refresh', on_click=lambda: actualizar_tabla()).props('flat round dense color=grey')
+                    # --- BUSCADOR INTELIGENTE ---
+                    with ui.row().classes('items-center gap-2'):
+                        input_busqueda = ui.input(placeholder='Buscar por nombre o tel...').props('dense outlined rounded debounce="300"').classes('w-64').on('input', filtrar)
+                        with input_busqueda.add_slot('append'):
+                            ui.icon('search')
+                            
+                        ui.button(icon='refresh', on_click=lambda: actualizar_tabla()).props('flat round dense color=grey')
                 
                 columns = [
                     {'name': 'nombre', 'label': 'Cliente', 'field': 'nombre', 'align': 'left', 'sortable': True, 'classes': 'font-bold text-slate-700'},
@@ -97,14 +143,14 @@ def show():
                     {'name': 'ultimo_servicio_fmt', 'label': 'Última Visita', 'field': 'ultimo_servicio_fmt', 'align': 'center', 'sortable': True},
                     {'name': 'status_alerta', 'label': 'Estado', 'field': 'status_alerta', 'align': 'center', 'sortable': True, 'classes': 'font-bold'},
                     {'name': 'notas', 'label': 'Notas', 'field': 'notas', 'align': 'left', 'classes': 'text-gray-400 italic text-xs'},
-                    {'name': 'acciones', 'label': 'Acciones', 'field': 'acciones', 'align': 'center'}, # Nueva columna
+                    {'name': 'acciones', 'label': 'Acciones', 'field': 'acciones', 'align': 'center'}, 
                 ]
                 
-                rows = db.obtener_clientes()
+                # Inicializamos vacío, la función cargar_datos lo llenará
+                rows = []
                 tabla_clientes = ui.table(columns=columns, rows=rows, row_key='id', pagination=10).classes('w-full')
 
                 # SLOTS
-                # 1. Columna de acciones (Botón eliminar)
                 tabla_clientes.add_slot('body-cell-acciones', r'''
                     <q-td :props="props">
                         <q-btn icon="delete" size="sm" color="negative" flat round 
@@ -114,7 +160,6 @@ def show():
                     </q-td>
                 ''')
                 
-                # 2. Slot opcional para colorear el estado (Mantenido)
                 tabla_clientes.add_slot('body-cell-status_alerta', r'''
                     <q-td :props="props">
                         <div v-if="props.value.includes('Vencido')" class="text-red-600 bg-red-50 px-2 py-1 rounded-full text-xs border border-red-200">
@@ -129,13 +174,13 @@ def show():
                     </q-td>
                 ''')
                 
-                # Conexión del evento Vue -> Python
                 tabla_clientes.on('confirmar_eliminar', lambda e: confirmar_eliminacion(e.args))
                 
+                # Carga inicial de datos
                 actualizar_tabla()
 
 
-    # --- DIALOGO DE CONFIRMACION (NUEVO) ---
+    # --- DIALOGO DE CONFIRMACION ---
     with ui.dialog() as dialog_confirmar_eliminar, ui.card().classes('w-96'):
         ui.label('⚠️ Eliminación Crítica').classes('text-xl font-bold text-red-700')
         ui.label('ADVERTENCIA: ¿Estás seguro de eliminar este cliente?').classes('my-2 font-bold')
