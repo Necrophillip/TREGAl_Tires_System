@@ -1,8 +1,46 @@
 from nicegui import ui, app
-from nicegui import ui
 from Db import database as db
 
 def show():
+    # --- Variables de Estado ---
+    todos_los_autos = []
+
+    # --- Funciones de Lógica ---
+    def filtrar_autos(e):
+        # CORRECCIÓN BUG: Detectamos si 'e' es un Evento (UI) o un Diccionario (Manual)
+        if isinstance(e, dict):
+            val = e.get('value') # Es un diccionario manual
+        else:
+            val = e.value # Es un evento de NiceGUI
+            
+        texto = str(val).lower() if val else ""
+        
+        if not texto:
+            tabla_autos.rows = todos_los_autos
+        else:
+            # Filtro multi-campo poderoso
+            tabla_autos.rows = [
+                row for row in todos_los_autos
+                if texto in str(row['placas']).lower() 
+                or texto in str(row['modelo']).lower() 
+                or texto in str(row['dueno_nombre']).lower()
+                or texto in str(row['num_economico']).lower()
+                or texto in str(row['vin']).lower()
+            ]
+        tabla_autos.update()
+
+    def cargar_datos_tabla():
+        nonlocal todos_los_autos
+        todos_los_autos = db.obtener_vehiculos_con_dueno()
+        
+        # Re-aplicar filtro si ya había algo escrito
+        if input_busqueda.value:
+            # Pasamos un diccionario, pero ahora filtrar_autos ya sabe leerlo
+            filtrar_autos({'value': input_busqueda.value})
+        else:
+            tabla_autos.rows = todos_los_autos
+            tabla_autos.update()
+
     # --- Estructura Principal ---
     with ui.column().classes('w-full h-full p-4 gap-4 bg-gray-50'):
         
@@ -12,13 +50,11 @@ def show():
                 ui.icon('directions_car', size='lg', color='primary')
                 ui.label('Gestión de Vehículos').classes('text-2xl font-bold text-gray-800')
 
-        # 2. CONTENEDOR SPLIT VIEW (Misma lógica que Servicios)
-        # 'flex-nowrap': Prohíbe que se bajen los elementos
-        # 'items-start': Alineación superior
+        # 2. CONTENEDOR SPLIT VIEW
         with ui.row().classes('w-full flex-nowrap items-start gap-6'):
             
             # =================================================
-            # PANEL IZQUIERDO: FORMULARIO (Fijo y Sticky)
+            # PANEL IZQUIERDO: FORMULARIO
             # =================================================
             with ui.card().classes('w-1/3 min-w-[350px] p-4 shadow-lg sticky top-4 border-t-4 border-blue-500'):
                 ui.label('Registrar Vehículo').classes('text-lg font-bold text-slate-700 mb-2')
@@ -27,7 +63,7 @@ def show():
                 opciones_clientes = db.obtener_clientes_para_select()
                 select_cliente = ui.select(options=opciones_clientes, label='Seleccionar Dueño', with_input=True).classes('w-full')
                 
-                # Botón refrescar clientes (pequeño y alineado)
+                # Botón refrescar clientes
                 def actualizar_lista_duenos():
                     select_cliente.options = db.obtener_clientes_para_select()
                     select_cliente.update()
@@ -46,7 +82,6 @@ def show():
                     anio = ui.number('Año', format='%.0f').classes('w-1/3 pr-1')
                     color = ui.input('Color').classes('w-2/3 pl-1')
 
-                # --- NUEVOS CAMPOS (Integrados) ---
                 with ui.row().classes('w-full gap-2'):
                     num_economico = ui.input('No. Eco').classes('w-1/3')
                     vin = ui.input('VIN / Serie').classes('w-2/3')
@@ -64,18 +99,17 @@ def show():
                     if not placas.value or not modelo.value:
                         ui.notify('Placas y Modelo son obligatorios', type='warning'); return
 
-                    # Guardar en DB
+                    # Guardar en DB (CORREGIDO: Usando los nombres de argumentos de database.py)
                     db.agregar_vehiculo(
-                        placas=placas.value.upper(), # Forzamos mayúsculas
+                        placas=placas.value.upper(),
                         modelo=modelo.value,
                         anio=int(anio.value) if anio.value else 0,
                         color=color.value,
-                        cliente_id=select_cliente.value,
-                        num_economico=num_economico.value or "",
+                        cid=select_cliente.value,       # <--- Antes decía cliente_id
+                        num=num_economico.value or "",  # <--- Antes decía num_economico
                         vin=vin.value or "",
-                        kilometraje=kilometraje.value or ""
+                        km=kilometraje.value or ""      # <--- Antes decía kilometraje
                     )
-                    
                     ui.notify(f'Vehículo {placas.value} agregado!', type='positive')
                     
                     # Limpiar
@@ -83,25 +117,26 @@ def show():
                     color.value = ''; num_economico.value = ''; vin.value = ''; kilometraje.value = ''
                     
                     # Recargar tabla derecha
-                    tabla_autos.rows = db.obtener_vehiculos_con_dueno()
-                    tabla_autos.update()
+                    cargar_datos_tabla()
 
                 ui.button('Guardar Vehículo', on_click=guardar).classes('w-full mt-4 bg-slate-800 text-white')
 
             # =================================================
-            # PANEL DERECHO: TABLA (Espacio Restante)
+            # PANEL DERECHO: TABLA
             # =================================================
-            # 'flex-grow' + 'w-0': Ocupa todo el espacio sobrante perfectamente
             with ui.card().classes('flex-grow w-0 p-4 shadow-lg'):
+                # CABECERA CON BUSCADOR
                 with ui.row().classes('w-full justify-between items-center mb-2'):
                     ui.label('Parque Vehicular').classes('text-lg font-bold text-slate-700')
-                    # Botón refresh tabla
-                    ui.button(icon='refresh', on_click=lambda: (
-                        setattr(tabla_autos, 'rows', db.obtener_vehiculos_con_dueno()), 
-                        tabla_autos.update()
-                    )).props('flat round dense')
+                    
+                    # --- BUSCADOR ---
+                    with ui.row().classes('items-center gap-2'):
+                        input_busqueda = ui.input(placeholder='Buscar placa, modelo, dueño...').props('dense outlined rounded debounce="300"').classes('w-72').on('input', filtrar_autos)
+                        with input_busqueda.add_slot('append'):
+                            ui.icon('search')
+                            
+                        ui.button(icon='refresh', on_click=cargar_datos_tabla).props('flat round dense')
                 
-                # Definición de columnas (Estilizadas)
                 columns = [
                     {'name': 'placas', 'label': 'Placas', 'field': 'placas', 'sortable': True, 'align': 'left', 'classes': 'font-bold bg-slate-100 rounded px-2'},
                     {'name': 'num_economico', 'label': 'No. Eco', 'field': 'num_economico', 'align': 'center', 'sortable': True},
@@ -112,6 +147,8 @@ def show():
                     {'name': 'dueno_nombre', 'label': 'Dueño', 'field': 'dueno_nombre', 'align': 'left', 'classes': 'text-blue-600 font-bold'},
                 ]
                 
-                rows = db.obtener_vehiculos_con_dueno()
-                
+                rows = []
                 tabla_autos = ui.table(columns=columns, rows=rows, row_key='id', pagination=8).classes('w-full')
+                
+                # Carga inicial
+                cargar_datos_tabla()
