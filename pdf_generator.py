@@ -37,8 +37,8 @@ def generar_pdf_cotizacion(datos, dias_vigencia, titulo="COTIZACIÓN"):
 
     c.setFillColor(COLOR_GRIS)
     c.setFont("Helvetica", 9)
-    c.drawString(50, height - 85, "Dirección: Av. Industrias #123, San Luis Potosí")
-    c.drawString(50, height - 97, "Tel: (444) 123-4567 | Email: contacto@tregaltires.com")
+    c.drawString(50, height - 85, "Dirección: Av. José de Gálvez 1355, Central de Abastos, 78390 San Luis Potosí, S.L.P., Mexico")
+    c.drawString(50, height - 97, "Tel: 821 4588/89 | Email: Regina.Gallegos@servillantas.com")
 
     c.setFillColor(colors.black)
     c.setFont("Helvetica-Bold", 24)
