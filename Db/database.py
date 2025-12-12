@@ -213,6 +213,24 @@ def obtener_vehiculos_select_format():
     conn = sqlite3.connect(DB_NAME); rows = conn.cursor().execute("SELECT v.id, v.placas, v.modelo, c.nombre FROM vehiculos v JOIN clientes c ON v.cliente_id=c.id").fetchall(); conn.close()
     return {r[0]: f"{r[1]} - {r[2]} ({r[3]})" for r in rows}
 
+# --- RC5 Email atomatico!
+
+def obtener_email_cliente_por_servicio(sid):
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+    # Hacemos JOIN para llegar del Servicio -> Vehículo -> Cliente
+    res = cursor.execute("""
+        SELECT c.email, c.nombre 
+        FROM servicios s
+        JOIN vehiculos v ON s.vehiculo_id = v.id
+        JOIN clientes c ON v.cliente_id = c.id
+        WHERE s.id = ?
+    """, (sid,)).fetchone()
+    conn.close()
+    
+    if res:
+        return {'email': res[0], 'nombre': res[1]}
+    return None
 # ==========================================
 # 6. OPERACIONES TALLER (CORE WORKFLOW)
 # ==========================================

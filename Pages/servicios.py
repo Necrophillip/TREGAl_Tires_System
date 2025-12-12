@@ -1,6 +1,7 @@
 from nicegui import ui, app 
 from Db import database as db
 import pdf_generator
+from services import email_service
 from datetime import datetime
 import base64 
 import os
@@ -103,6 +104,50 @@ def show():
         ui.notify(f'Estatus actualizado: {nuevo_estatus}', type='positive')
         actualizar_tablas()
 
+# --- RC5 FUNCIÓN DE ENVÍO ---
+    def enviar_nota_por_correo(sid):
+        # 1. Obtener datos del cliente
+        info_cliente = db.obtener_email_cliente_por_servicio(sid)
+        if not info_cliente or not info_cliente['email']:
+            ui.notify('Este cliente no tiene correo registrado 😟', type='warning')
+            return
+
+        # 2. Generar el PDF fresco (Nota de Mostrador)
+        datos = db.obtener_datos_completos_pdf(sid)
+        if not datos: return
+        
+        # Generamos PDF temporal
+        ruta_pdf = pdf_generator.generar_pdf_cotizacion(datos, 0, titulo="NOTA DE SERVICIO")
+        
+        # 3. Notificación de "Enviando..." (UI UX)
+        n = ui.notification('Enviando correo...', spinner=True, timeout=None)
+        
+        # 4. Enviar (En un timer para no congelar la UI)
+        def proceso_envio():
+            cuerpo = f"""Hola {info_cliente['nombre']},
+            
+Adjunto encontrarás el detalle de tu servicio en TREGAL Tires.
+Gracias por tu preferencia.
+            
+Atte. El Equipo TREGAL."""
+            
+            ok, msg = email_service.enviar_correo_con_pdf(
+                info_cliente['email'], 
+                f"Tu Servicio #{sid} - TREGAL Tires", 
+                cuerpo, 
+                ruta_pdf
+            )
+            
+            n.dismiss() # Quitar spinner
+            if ok:
+                ui.notify(f'📨 {msg} a {info_cliente["email"]}', type='positive')
+            else:
+                ui.notify(f'❌ {msg}', type='negative')
+            
+            # Limpieza (borrar PDF temporal)
+            if os.path.exists(ruta_pdf): os.remove(ruta_pdf)
+
+        ui.timer(0.1, proceso_envio, once=True)
     # ==========================================
     # 4. DIÁLOGOS Y MODALES
     # ==========================================
@@ -382,12 +427,14 @@ def show():
                                     <q-btn icon="print" size="sm" flat round color="red" @click="$parent.$emit('ver_pdf', props.row.id)"><q-tooltip>Ver Nota</q-tooltip></q-btn>
                                     <q-btn icon="post_add" size="sm" flat round color="indigo" @click="$parent.$emit('add_serv', props.row.id)"><q-tooltip>Mano Obra</q-tooltip></q-btn>
                                     <q-btn icon="inventory_2" size="sm" flat round color="orange" @click="$parent.$emit('add_ref', props.row.id)"><q-tooltip>Refacción</q-tooltip></q-btn>
+                                    <q-btn icon="email" size="sm" flat round color="blue" @click="$parent.$emit('email', props.row.id)"><q-tooltip>Enviar por Correo</q-tooltip></q-btn>
                                     {btn_cobrar}
                                 </div>
                             </q-td>
                         '''
                         tabla_servicios.add_slot('body-cell-acciones', slot_acc)
                         tabla_servicios.on('editar_items', lambda e: cargar_editor_items(e.args))
+                        tabla_servicios.on('email', lambda e: enviar_nota_por_correo(e.args))
                         
                         # Eventos de la tabla
                         tabla_servicios.on('link', lambda e: (ui.clipboard.write(f"https://app.tregal.com.mx/status/{e.args}"), ui.notify('Link copiado')))
