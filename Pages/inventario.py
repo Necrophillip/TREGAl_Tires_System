@@ -174,7 +174,14 @@ def show():
                 tabla_inv = ui.table(columns=columns, rows=[], row_key='id', pagination=10).classes('w-full')
                 tabla_inv.on('eliminar', lambda e: eliminar_producto(e.args))
                 
-                actualizar_tabla()
+                # --- AUTO-REFRESCO INTELIGENTE ---
+                # 1. Carga inicial inmediata
+                ui.timer(0.1, actualizar_tabla, once=True)
+                
+                # 2. Refresco periódico (cada 5 segundos)
+                # Esto mantiene el inventario sincronizado si se hacen ventas en otro lado
+                ui.timer(5.0, actualizar_tabla)
+
                 buscar.on('input', lambda e: setattr(tabla_inv, 'filter', e.value))
 
     # --- DIALOGO CONFIGURACIÓN ALERTAS ---

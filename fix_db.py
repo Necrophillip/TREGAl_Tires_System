@@ -134,30 +134,41 @@ if __name__ == "__main__":
     aplicar_todas_las_migraciones()
     # --- AGREGAR ESTO AL FINAL DE fix_db.py ---
 
+# --- EN fix_db.py (Reemplaza la función reparar_datos_historicos completa) ---
+
 def reparar_datos_historicos():
-    print("\n--- 4. Reparando Datos Históricos (Backfill) ---")
+    print("\n--- 4. Reparando Datos Históricos (Backfill Avanzado) ---")
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
 
     try:
-        # 1. Copiar costo_estimado a costo_final en servicios terminados que tengan 0
-        cursor.execute("""
-            UPDATE servicios 
-            SET costo_final = costo_estimado 
-            WHERE estado = 'Terminado' AND (costo_final IS NULL OR costo_final = 0)
-        """)
-        if cursor.rowcount > 0:
-            print(f"   💰 Se corrigieron {cursor.rowcount} tickets antiguos con monto $0.")
+        # 1. RECALCULO FORENSE: Sumar Mano de Obra + Refacciones
+        # Esto arregla las ordenes que dicen $0 pero tienen items adentro.
+        print("   🔄 Recalculando totales reales (Mano de Obra + Refacciones)...")
         
-        # 2. Asegurar que tengan fecha_cierre (si no tienen, usar la fecha de creación)
+        cursor.execute("""
+            UPDATE servicios
+            SET costo_final = (
+                COALESCE((SELECT SUM(costo_cobrado) FROM servicio_detalles WHERE servicio_id = servicios.id), 0) +
+                COALESCE((SELECT SUM(subtotal) FROM servicio_refacciones WHERE servicio_id = servicios.id), 0)
+            )
+            WHERE estado = 'Terminado' 
+            AND (costo_final IS NULL OR costo_final = 0 OR costo_final != costo_estimado)
+        """)
+        
+        if cursor.rowcount > 0:
+            print(f"   💰 Se recalcularon y corrigieron {cursor.rowcount} tickets antiguos.")
+
+        # 1.1 Sincronizar costo_estimado también (para que la tabla del UI se vea bien)
+        cursor.execute("UPDATE servicios SET costo_estimado = costo_final WHERE estado = 'Terminado' AND costo_estimado = 0 AND costo_final > 0")
+
+        # 2. Asegurar fecha_cierre (Fallback a fecha de creación)
         cursor.execute("""
             UPDATE servicios 
             SET fecha_cierre = fecha 
             WHERE estado = 'Terminado' AND (fecha_cierre IS NULL OR fecha_cierre = '')
         """)
-        if cursor.rowcount > 0:
-            print(f"   📅 Se corrigieron {cursor.rowcount} fechas de cierre vacías.")
-
+        
         # 3. Asignar 'Efectivo' por defecto a lo viejo
         cursor.execute("""
             UPDATE servicios 
@@ -166,7 +177,7 @@ def reparar_datos_historicos():
         """)
         
         conn.commit()
-        print("   ✅ Datos históricos actualizados correctamente.")
+        print("   ✅ Datos históricos saneados al 100%.")
 
     except Exception as e:
         print(f"   ❌ Error reparando datos: {e}")

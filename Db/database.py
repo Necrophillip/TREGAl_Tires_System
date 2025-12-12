@@ -248,20 +248,49 @@ def obtener_cotizaciones():
     rows = conn.cursor().execute(sql).fetchall(); conn.close()
     return [dict(r) for r in rows]
 
-# NUEVO RC3: Convertir Cotización a Orden Real
+# NUEVO RC4: NUEVO Restar inventario solo en ordenes de trabajo
+# --- EN Db/database.py ---
+
 def convertir_cotizacion_a_orden(servicio_id, tecnico_id=None):
     conn = sqlite3.connect(DB_NAME)
-    fecha_hoy = datetime.now().strftime("%Y-%m-%d %H:%M")
-    conn.cursor().execute("""
-        UPDATE servicios 
-        SET tipo_doc='Orden', 
-            estado='Pendiente', 
-            estatus_detalle='Recibido',
-            fecha=?,
-            tecnico_asignado_id=?
-        WHERE id=?
-    """, (fecha_hoy, tecnico_id, servicio_id))
-    conn.commit(); conn.close()
+    cursor = conn.cursor()
+    try:
+        fecha_hoy = datetime.now().strftime("%Y-%m-%d %H:%M")
+        
+        # 1. Convertir el encabezado (Cambiar estado y asignar fecha)
+        cursor.execute("""
+            UPDATE servicios 
+            SET tipo_doc='Orden', 
+                estado='Pendiente', 
+                estatus_detalle='Recibido',
+                fecha=?,
+                tecnico_asignado_id=?
+            WHERE id=?
+        """, (fecha_hoy, tecnico_id, servicio_id))
+        
+        # 2. IMPACTO AL INVENTARIO (Modo Permisivo)
+        # Obtenemos todas las refacciones que estaban "reservadas" en la cotización
+        items = cursor.execute("SELECT inventario_id, cantidad FROM servicio_refacciones WHERE servicio_id=?", (servicio_id,)).fetchall()
+        
+        items_afectados = 0
+        for iid, cant in items:
+            # Restamos directamente. Si hay 0, pasa a -1. Si hay 5 y piden 10, pasa a -5.
+            cursor.execute("UPDATE inventario SET cantidad = cantidad - ? WHERE id=?", (cant, iid))
+            items_afectados += 1
+
+        conn.commit()
+        
+        msg = "Cotización aprobada"
+        if items_afectados > 0:
+            msg += f" y stock descontado de {items_afectados} productos"
+            
+        return True, msg
+        
+    except Exception as e:
+        conn.rollback()
+        return False, str(e)
+    finally:
+        conn.close()
 
 # UPDATE RC3: Filtro para solo traer Órdenes (no cotizaciones)
 def obtener_servicios_activos(filtro_trabajador_id=None):
@@ -325,17 +354,56 @@ def agregar_tarea_comision(sid, tid, desc, costo, pct):
     conn = sqlite3.connect(DB_NAME); monto = costo * (pct/100)
     conn.cursor().execute("INSERT INTO servicio_detalles (servicio_id, trabajador_id, descripcion_tarea, costo_cobrado, porcentaje_comision, monto_comision, fecha) VALUES (?,?,?,?,?,?,?)", (sid, tid, desc, costo, pct, monto, datetime.now().strftime("%Y-%m-%d"))); conn.commit(); conn.close(); recalcular_total_servicio(sid)
 
+# RC4
+
 def agregar_refaccion_a_servicio(sid, iid, cant):
     conn = sqlite3.connect(DB_NAME); cur = conn.cursor()
-    prod = cur.execute("SELECT cantidad, precio_venta, descripcion FROM inventario WHERE id=?", (iid,)).fetchone()
-    if not prod: conn.close(); return False, "No existe"
-    if prod[0] < cant: conn.close(); return False, f"Stock insuficiente ({prod[0]})"
-    # IMPORTANTE: Si es cotización, NO descontar inventario aún. (Pendiente validación de tipo_doc, por ahora simple)
-    # (Para RC3 simple: Descuenta y si se cancela cotización habría que devolver... 
-    # Mejor enfoque: Solo Ordenes descuentan. Añadiremos validación en el Frontend)
-    cur.execute("UPDATE inventario SET cantidad=? WHERE id=?", (prod[0]-cant, iid))
-    cur.execute("INSERT INTO servicio_refacciones (servicio_id, inventario_id, cantidad, precio_unitario, subtotal) VALUES (?,?,?,?,?)", (sid, iid, cant, prod[1], cant*prod[1]))
-    conn.commit(); conn.close(); recalcular_total_servicio(sid); return True, f"Agregado {prod[2]}"
+    try:
+        # 1. Obtenemos datos del producto y tipo de documento
+        prod = cur.execute("SELECT cantidad, precio_venta, descripcion FROM inventario WHERE id=?", (iid,)).fetchone()
+        tipo_row = cur.execute("SELECT tipo_doc FROM servicios WHERE id=?", (sid,)).fetchone()
+        
+        if not prod: return False, "Producto no encontrado"
+        
+        stock_actual = prod[0]
+        precio = prod[1]
+        desc = prod[2]
+        
+        # Si por alguna razón tipo_doc es None (registros viejos), asumimos 'Orden'
+        tipo_doc = tipo_row[0] if tipo_row else 'Orden'
+
+        # 2. Lógica Diferenciada (Modo Permisivo)
+        if tipo_doc == 'Cotizacion':
+            # En cotización NO tocamos el inventario físico
+            pass 
+        else:
+            # En Orden SÍ descontamos, permitiendo negativos
+            nuevo_stock = stock_actual - cant
+            cur.execute("UPDATE inventario SET cantidad=? WHERE id=?", (nuevo_stock, iid))
+
+        # 3. Insertamos el registro en la orden/cotización
+        cur.execute("""
+            INSERT INTO servicio_refacciones 
+            (servicio_id, inventario_id, cantidad, precio_unitario, subtotal) 
+            VALUES (?,?,?,?,?)
+        """, (sid, iid, cant, precio, cant * precio))
+        
+        conn.commit()
+        recalcular_total_servicio(sid)
+        
+        # 4. Generamos el mensaje de respuesta
+        msg = f"Agregado: {desc}"
+        
+        # Alerta visual si estamos en números rojos (solo para Ordenes)
+        if tipo_doc != 'Cotizacion' and (stock_actual - cant) < 0:
+            msg += f" (⚠️ Stock Negativo: {stock_actual - cant})"
+            
+        return True, msg
+
+    except Exception as e:
+        return False, str(e)
+    finally:
+        conn.close()
 
 def eliminar_servicio_por_id(sid):
     conn = sqlite3.connect(DB_NAME); cur = conn.cursor()
@@ -356,6 +424,66 @@ def obtener_info_publica_servicio(uuid):
     conn = sqlite3.connect(DB_NAME); conn.row_factory = sqlite3.Row
     row = conn.cursor().execute("SELECT s.estatus_detalle, s.fecha, v.modelo, v.placas FROM servicios s JOIN vehiculos v ON s.vehiculo_id=v.id WHERE s.uuid_publico=?", (uuid,)).fetchone(); conn.close()
     return dict(row) if row else None
+
+# --- AGREGAR EN database.py ---
+
+def obtener_items_editables(sid):
+    """Obtiene los ítems con sus IDs reales para poder borrarlos"""
+    conn = sqlite3.connect(DB_NAME); conn.row_factory = sqlite3.Row; cur = conn.cursor()
+    
+    # 1. Mano de Obra
+    mo = cur.execute("""
+        SELECT id, 'MO' as tipo, descripcion_tarea as desc, 1 as cant, costo_cobrado as total 
+        FROM servicio_detalles WHERE servicio_id=?""", (sid,)).fetchall()
+    
+    # 2. Refacciones
+    ref = cur.execute("""
+        SELECT sr.id, 'Ref' as tipo, i.descripcion as desc, sr.cantidad as cant, sr.subtotal as total 
+        FROM servicio_refacciones sr 
+        JOIN inventario i ON sr.inventario_id = i.id 
+        WHERE sr.servicio_id=?""", (sid,)).fetchall()
+    
+    conn.close()
+    return [dict(r) for r in mo] + [dict(r) for r in ref]
+
+def eliminar_item_orden(tipo, item_id, servicio_id):
+    """Elimina un ítem y devuelve stock si es necesario"""
+    conn = sqlite3.connect(DB_NAME); cur = conn.cursor()
+    try:
+        if tipo == 'Ref':
+            # CORRECCIÓN: Usamos alias 'sr' e 'i' para evitar ambigüedad en 'cantidad'
+            # Queremos saber cuántos se vendieron (sr.cantidad), no cuánto stock hay (i.cantidad)
+            sql = """
+                SELECT sr.inventario_id, sr.cantidad, i.descripcion 
+                FROM servicio_refacciones sr
+                JOIN inventario i ON sr.inventario_id = i.id 
+                WHERE sr.id=?
+            """
+            data = cur.execute(sql, (item_id,)).fetchone()
+            
+            if data:
+                inv_id, cant_vendida, desc = data
+                
+                # DEVOLUCION DE STOCK (Sumamos lo que se había vendido)
+                # Aquí sí actualizamos la tabla inventario
+                cur.execute("UPDATE inventario SET cantidad = cantidad + ? WHERE id=?", (cant_vendida, inv_id))
+                
+                # Borramos la línea de la orden
+                cur.execute("DELETE FROM servicio_refacciones WHERE id=?", (item_id,))
+        else:
+            # Es Mano de Obra, solo borramos
+            cur.execute("DELETE FROM servicio_detalles WHERE id=?", (item_id,))
+            
+        conn.commit()
+        # Recalcular el total de la orden ($)
+        recalcular_total_servicio(servicio_id)
+        return True, "Ítem eliminado y totales actualizados"
+        
+    except Exception as e:
+        conn.rollback()
+        return False, f"Error DB: {str(e)}"
+    finally:
+        conn.close()
 
 # Funciones PDF
 def obtener_datos_completos_pdf(sid):
@@ -424,7 +552,7 @@ def obtener_conteo_estados_servicios():
     conn = sqlite3.connect(DB_NAME); rows = conn.cursor().execute("SELECT estado, COUNT(*) FROM servicios GROUP BY estado").fetchall(); conn.close()
     return [{"name": r[0], "value": r[1]} for r in rows]
 
-# --- EN Db/database.py (Reemplaza las últimas 2 funciones) ---
+# RC4
 
 def obtener_resumen_financiero(fecha_inicio: str, fecha_fin: str):
     """
@@ -467,18 +595,19 @@ def obtener_resumen_financiero(fecha_inicio: str, fecha_fin: str):
         'total': total_general,
         'desglose': desglose
     }
-
+#--- RC4 Obtener datos para reporte pro
 def obtener_detalle_ventas(fecha_inicio: str, fecha_fin: str):
-    """Obtiene la lista de tickets para la tabla de detalle"""
+    """Obtiene la lista de tickets para la tabla de detalle (INCLUYE CLIENTE)"""
     conn = sqlite3.connect(DB_NAME)
     conn.row_factory = sqlite3.Row 
     cursor = conn.cursor()
     
     sql = """
-        SELECT s.id, s.fecha_cierre, v.modelo, s.metodo_pago, s.costo_final
+        SELECT s.id, s.fecha_cierre, v.modelo, c.nombre as cliente, s.metodo_pago, s.costo_final
         FROM servicios s
         LEFT JOIN vehiculos v ON s.vehiculo_id = v.id
-        WHERE s.estado = 'Terminado'  -- ✅ CORREGIDO
+        LEFT JOIN clientes c ON v.cliente_id = c.id  -- ✅ NUEVO: Traemos el nombre del cliente
+        WHERE s.estado = 'Terminado'
           AND date(s.fecha_cierre) BETWEEN ? AND ?
         ORDER BY s.fecha_cierre DESC
     """
