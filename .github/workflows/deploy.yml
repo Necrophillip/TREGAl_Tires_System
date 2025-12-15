@@ -1,0 +1,35 @@
+name: Deploy to DigitalOcean
+
+on:
+  push:
+    branches: [ "main" ]  # <--- Fíjate que "push" tiene 2 espacios y "branches" tiene 4.
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 🚀 Conectando y Desplegando
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.HOST }}
+          username: ${{ secrets.USERNAME }}
+          key: ${{ secrets.SSH_KEY }}
+          script: |
+            # 1. Ir a la carpeta
+            cd /root/TREGAl_Tires_System
+            
+            # 2. SOLUCIÓN DE CONFLICTOS (Reset agresivo)
+            # Esto evita el error de "local changes" si editaste archivos en el servidor
+            git fetch --all
+            git reset --hard origin/main
+            
+            # 3. Actualizar
+            source venv/bin/activate
+            pip install -r requirements.txt
+            python3 fix_db.py
+            
+            # 4. Reiniciar
+            pkill -f main.py || true
+            nohup python3 main.py > nohup.out 2>&1 &
+            
+            echo "✅ ¡Despliegue completado!"
