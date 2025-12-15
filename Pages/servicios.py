@@ -1,4 +1,4 @@
-from nicegui import ui, app 
+from nicegui import ui, app, run
 from Db import database as db
 import pdf_generator
 from services import email_service
@@ -105,33 +105,37 @@ def show():
         actualizar_tablas()
 
 # --- RC5 FUNCIÓN DE ENVÍO ---
-    def enviar_nota_por_correo(sid):
+    # --- RC5 FUNCIÓN DE ENVÍO ASÍNCRONA (CORREGIDA) ---
+    async def enviar_nota_por_correo(sid):
         # 1. Obtener datos del cliente
         info_cliente = db.obtener_email_cliente_por_servicio(sid)
         if not info_cliente or not info_cliente['email']:
             ui.notify('Este cliente no tiene correo registrado 😟', type='warning')
             return
 
-        # 2. Generar el PDF fresco (Nota de Mostrador)
+        # 2. Generar el PDF fresco
         datos = db.obtener_datos_completos_pdf(sid)
         if not datos: return
         
         # Generamos PDF temporal
+        # OJO: Asegúrate de que 'pdf_generator' esté importado arriba
         ruta_pdf = pdf_generator.generar_pdf_cotizacion(datos, 0, titulo="NOTA DE SERVICIO")
         
-        # 3. Notificación de "Enviando..." (UI UX)
-        n = ui.notification('Enviando correo...', spinner=True, timeout=None)
+        # 3. Notificación (Spinner)
+        n = ui.notification('Enviando correo (segundo plano)...', spinner=True, timeout=None)
         
-        # 4. Enviar (En un timer para no congelar la UI)
-        def proceso_envio():
-            cuerpo = f"""Hola {info_cliente['nombre']},
-            
+        cuerpo = f"""Hola {info_cliente['nombre']},
+        
 Adjunto encontrarás el detalle de tu servicio en TREGAL Tires.
 Gracias por tu preferencia.
-            
+        
 Atte. El Equipo TREGAL."""
-            
-            ok, msg = email_service.enviar_correo_con_pdf(
+
+        # 4. ENVIAR SIN CONGELAR (run.io_bound)
+        try:
+            # Ejecutamos el envío en un hilo separado para que no bloquee el servidor
+            ok, msg = await run.io_bound(
+                email_service.enviar_correo_con_pdf, 
                 info_cliente['email'], 
                 f"Tu Servicio #{sid} - TREGAL Tires", 
                 cuerpo, 
@@ -139,15 +143,24 @@ Atte. El Equipo TREGAL."""
             )
             
             n.dismiss() # Quitar spinner
+            
             if ok:
                 ui.notify(f'📨 {msg} a {info_cliente["email"]}', type='positive')
             else:
                 ui.notify(f'❌ {msg}', type='negative')
-            
-            # Limpieza (borrar PDF temporal)
-            if os.path.exists(ruta_pdf): os.remove(ruta_pdf)
 
-        ui.timer(0.1, proceso_envio, once=True)
+        except Exception as e:
+            n.dismiss()
+            ui.notify(f"Error crítico enviando: {e}", type='negative')
+            print(f"Error Email: {e}")
+
+        finally:
+            # 5. Limpieza: Borrar el PDF temporal siempre
+            if os.path.exists(ruta_pdf): 
+                try:
+                    os.remove(ruta_pdf)
+                except:
+                    pass
     # ==========================================
     # 4. DIÁLOGOS Y MODALES
     # ==========================================
