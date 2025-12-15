@@ -30,6 +30,6 @@ jobs:
             
             # 4. Reiniciar
             pkill -f main.py || true
-            nohup python3 main.py > nohup.out 2>&1 &
+            systemctl restart tregal
             
             echo "✅ ¡Despliegue completado!"
