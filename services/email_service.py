@@ -9,8 +9,8 @@ from email import encoders
 # --- CONFIGURACIÓN (Idealmente usa variables de entorno) ---
 SMTP_SERVER = 'smtp.gmail.com' # O smtp.office365.com para Outlook
 SMTP_PORT = 587
-EMAIL_REMITENTE = 'jaimitoandroid1@gmail.com' # <--- CAMBIA ESTO
-EMAIL_PASSWORD = 'dfeevalhxinadqzt'  # <--- TU CONTRASEÑA DE APLICACIÓN
+EMAIL_REMITENTE = 'gallegoscalderonregina@gmail.com' # <--- CAMBIA ESTO
+EMAIL_PASSWORD = 'cnbfsmlmeykbymgi'  # <--- TU CONTRASEÑA DE APLICACIÓN
 
 def enviar_correo_con_pdf(destinatario, asunto, cuerpo, ruta_pdf):
     if not destinatario or '@' not in destinatario:
