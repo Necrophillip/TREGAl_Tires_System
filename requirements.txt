@@ -4,3 +4,5 @@ pyinstaller
 watchfiles
 pywebview
 reportlab
+resend>=0.1.0
+python-dotenv

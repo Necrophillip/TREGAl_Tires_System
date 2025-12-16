@@ -1,5 +1,7 @@
 import smtplib
 import os
+import resend
+from dotenv import load_dotenv
 from email.message import EmailMessage
 from email.mime.base import MIMEBase
 from email.mime.multipart import MIMEMultipart
@@ -11,6 +13,11 @@ SMTP_SERVER = 'smtp.gmail.com' # O smtp.office365.com para Outlook
 SMTP_PORT = 587
 EMAIL_REMITENTE = 'gallegoscalderonregina@gmail.com' # <--- CAMBIA ESTO
 EMAIL_PASSWORD = 'cnbfsmlmeykbymgi'  # <--- TU CONTRASEÑA DE APLICACIÓN
+# 1. Cargar las variables del archivo .env
+load_dotenv() 
+
+# 2. Configurar Resend
+resend.api_key = os.getenv("RESEND_API_KEY")
 
 def enviar_correo_con_pdf(destinatario, asunto, cuerpo, ruta_pdf):
     if not destinatario or '@' not in destinatario:
