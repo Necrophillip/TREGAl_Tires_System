@@ -1,54 +1,57 @@
-import smtplib
 import os
 import resend
 from dotenv import load_dotenv
-from email.message import EmailMessage
-from email.mime.base import MIMEBase
-from email.mime.multipart import MIMEMultipart
-from email.mime.text import MIMEText
-from email import encoders
 
-# --- CONFIGURACIÓN (Idealmente usa variables de entorno) ---
-SMTP_SERVER = 'smtp.gmail.com' # O smtp.office365.com para Outlook
-SMTP_PORT = 587
-EMAIL_REMITENTE = 'gallegoscalderonregina@gmail.com' # <--- CAMBIA ESTO
-EMAIL_PASSWORD = 'cnbfsmlmeykbymgi'  # <--- TU CONTRASEÑA DE APLICACIÓN
 # 1. Cargar las variables del archivo .env
 load_dotenv() 
 
-# 2. Configurar Resend
+# 2. Configurar la API Key de Resend
 resend.api_key = os.getenv("RESEND_API_KEY")
 
 def enviar_correo_con_pdf(destinatario, asunto, cuerpo, ruta_pdf):
-    if not destinatario or '@' not in destinatario:
-        return False, "Correo inválido o inexistente"
+    # Validación de seguridad: Verificar que la llave exista
+    if not resend.api_key:
+        print("❌ Error: No se encontró RESEND_API_KEY en las variables de entorno.")
+        return False, "Error de configuración servidor (Falta API Key)"
 
-    msg = MIMEMultipart()
-    msg['From'] = EMAIL_REMITENTE
-    msg['To'] = destinatario
-    msg['Subject'] = asunto
-
-    # Cuerpo del mensaje
-    msg.attach(MIMEText(cuerpo, 'plain'))
-
-    # Adjuntar PDF
     try:
-        with open(ruta_pdf, 'rb') as f:
-            part = MIMEBase('application', 'octet-stream')
-            part.set_payload(f.read())
-        
-        encoders.encode_base64(part)
-        nombre_archivo = os.path.basename(ruta_pdf)
-        part.add_header('Content-Disposition', f'attachment; filename="{nombre_archivo}"')
-        msg.attach(part)
+        # --- PREPARAR ADJUNTO (PDF) ---
+        adjuntos = []
+        if ruta_pdf and os.path.exists(ruta_pdf):
+            nombre_archivo = os.path.basename(ruta_pdf)
+            with open(ruta_pdf, "rb") as f:
+                # Resend necesita una lista de bytes (números), no el objeto archivo
+                lista_bytes = list(f.read())
+                
+            adjuntos.append({
+                "filename": nombre_archivo,
+                "content": lista_bytes
+            })
 
-        # Enviar
-        with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
-            server.starttls()
-            server.login(EMAIL_REMITENTE, EMAIL_PASSWORD)
-            server.send_message(msg)
-            
-        return True, "Correo enviado exitosamente"
+        # --- ENVIAR CORREO (USANDO API RESEND) ---
+        # NOTA: Esto usa el puerto 443 (HTTPS), por lo que NO se bloquea en DigitalOcean.
         
+        params = {
+            # ✅ MODO PROFESIONAL (Solo funciona si ya verificaste el dominio tregal.com.mx)
+            "from": "TREGAL System <notificaciones@tregal.com.mx>", 
+            
+            # Si tu dominio aun NO está verde en Resend, usa esta línea en su lugar:
+            # "from": "TREGAL System <onboarding@resend.dev>",
+            
+            "to": [destinatario],
+            "subject": asunto,
+            "html": cuerpo.replace('\n', '<br>'), # Convertir saltos de línea a HTML simple
+            "attachments": adjuntos
+        }
+
+        email = resend.Emails.send(params)
+
+        # --- VERIFICAR RESPUESTA ---
+        if email.get("id"):
+            return True, "Correo enviado exitosamente"
+        else:
+            return False, "No se recibió confirmación de envío"
+
     except Exception as e:
-        return False, f"Error SMTP: {str(e)}"
+        print(f"❌ Error Resend: {e}")
+        return False, f"Error API: {str(e)}"
