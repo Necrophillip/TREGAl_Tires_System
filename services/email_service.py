@@ -33,7 +33,7 @@ def enviar_correo_con_pdf(destinatario, asunto, cuerpo, ruta_pdf):
         
         params = {
             # ✅ MODO PROFESIONAL (Solo funciona si ya verificaste el dominio tregal.com.mx)
-            "from": "TREGAL System <notificaciones@tregal.com.mx>", 
+            "from": "TREGAL System <notificaciones@app.tregal.com.mx>", 
             
             # Si tu dominio aun NO está verde en Resend, usa esta línea en su lugar:
             # "from": "TREGAL System <onboarding@resend.dev>",
