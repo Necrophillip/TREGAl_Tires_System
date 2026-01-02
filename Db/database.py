@@ -908,16 +908,18 @@ def enviar_email_resend(destinatario, asunto, html_body, cliente_id=None, tipo="
             registrar_envio_email(cliente_id, tipo, asunto, f"Error: {str(e)}")
         return False, str(e)
 
+# EN Db/database.py
+
 def procesar_recordatorios_automaticos():
-    """Busca clientes próximos a servicio y envía correos si no se les ha enviado ya."""
-    clientes = obtener_clientes() 
+    """Busca clientes próximos a servicio y envía correos si faltan 7 días o menos."""
+    clientes = obtener_clientes()
     meses = get_meses_alerta()
     limite_dias = meses * 30
     hoy = datetime.now()
     enviados = 0
     
-    # DEFINIR LA VENTANA DE AVISO (Días antes del vencimiento)
-    # Antes era 45, lo bajamos a 7 para que avise 1 semana antes.
+    # --- AJUSTE CLAVE: VENTANA DE AVISO ---
+    # Solo avisar si faltan 7 días o menos para el vencimiento.
     DIAS_AVISO_PREVIO = 7 
     
     for c in clientes:
@@ -927,23 +929,20 @@ def procesar_recordatorios_automaticos():
                 delta = (hoy - dt).days
                 dias_restantes = limite_dias - delta
                 
-                # CORRECCIÓN: Solo enviar si faltan 7 días o menos (y aún no ha vencido)
+                # CORRECCIÓN: Si dias_restantes es 30, NO entra.
+                # Solo entra si dias_restantes es 7, 6, 5... hasta 1.
                 if 0 < dias_restantes <= DIAS_AVISO_PREVIO:
                     
-                    # Evitar spam: checar si ya enviamos recordatorio en los últimos 20 días
                     if not verificar_recordatorio_reciente(c['id'], dias_cooldown=20):
-                        
                         html = f"""
                         <h1>Hola {c['nombre']}</h1>
                         <p>Notamos que tu vehículo está próximo a requerir su mantenimiento preventivo.</p>
                         <p><strong>Fecha estimada:</strong> En {dias_restantes} días.</p>
                         <p>Evita fallas y agenda tu cita hoy mismo.</p>
-                        <br>
-                        <p>Atte. El equipo de TREGAL Tires</p>
+                        <br><p>Atte. El equipo de TREGAL Tires</p>
                         """
-                        
+                        # Usamos la función que lee la API Key de la DB
                         ok, _ = enviar_email_resend(c['email'], "Recordatorio de Servicio 🚗", html, c['id'], "Recordatorio")
                         if ok: enviados += 1
             except: pass
-            
     return enviados

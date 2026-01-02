@@ -1,52 +1,42 @@
 import os
 import resend
-from dotenv import load_dotenv
-
-# 1. Cargar las variables del archivo .env
-load_dotenv() 
-
-# 2. Configurar la API Key de Resend
-resend.api_key = os.getenv("RESEND_API_KEY")
+from Db import database as db # <--- Importamos la DB para leer la configuración real
 
 def enviar_correo_con_pdf(destinatario, asunto, cuerpo, ruta_pdf):
-    # Validación de seguridad: Verificar que la llave exista
-    if not resend.api_key:
-        print("❌ Error: No se encontró RESEND_API_KEY en las variables de entorno.")
-        return False, "Error de configuración servidor (Falta API Key)"
+    # 1. OBTENER CREDENCIALES DE LA BASE DE DATOS (Lo que configuraste en el Dashboard)
+    api_key = db.get_resend_api_key()
+    remitente = db.get_email_remitente()
+
+    # Validación
+    if not api_key:
+        print("❌ Error: Falta API Key en Configuración.")
+        return False, "Error: Falta configurar API Key en el Dashboard"
+
+    resend.api_key = api_key
 
     try:
-        # --- PREPARAR ADJUNTO (PDF) ---
+        # --- PREPARAR ADJUNTO ---
         adjuntos = []
         if ruta_pdf and os.path.exists(ruta_pdf):
             nombre_archivo = os.path.basename(ruta_pdf)
             with open(ruta_pdf, "rb") as f:
-                # Resend necesita una lista de bytes (números), no el objeto archivo
                 lista_bytes = list(f.read())
-                
             adjuntos.append({
                 "filename": nombre_archivo,
                 "content": lista_bytes
             })
 
-        # --- ENVIAR CORREO (USANDO API RESEND) ---
-        # NOTA: Esto usa el puerto 443 (HTTPS), por lo que NO se bloquea en DigitalOcean.
-        
+        # --- ENVIAR CORREO ---
         params = {
-            # ✅ MODO PROFESIONAL (Solo funciona si ya verificaste el dominio tregal.com.mx)
-            "from": "TREGAL System <notificaciones@app.tregal.com.mx>", 
-            
-            # Si tu dominio aun NO está verde en Resend, usa esta línea en su lugar:
-            # "from": "TREGAL System <onboarding@resend.dev>",
-            
+            "from": remitente, # <--- Usamos el correo que pusiste en el Dashboard (avisos@app.tregal...)
             "to": [destinatario],
             "subject": asunto,
-            "html": cuerpo.replace('\n', '<br>'), # Convertir saltos de línea a HTML simple
+            "html": cuerpo.replace('\n', '<br>'),
             "attachments": adjuntos
         }
 
         email = resend.Emails.send(params)
 
-        # --- VERIFICAR RESPUESTA ---
         if email.get("id"):
             return True, "Correo enviado exitosamente"
         else:
