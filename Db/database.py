@@ -910,27 +910,29 @@ def enviar_email_resend(destinatario, asunto, html_body, cliente_id=None, tipo="
 
 def procesar_recordatorios_automaticos():
     """Busca clientes próximos a servicio y envía correos si no se les ha enviado ya."""
-    clientes = obtener_clientes() # Reutilizamos tu función existente
+    clientes = obtener_clientes() 
     meses = get_meses_alerta()
     limite_dias = meses * 30
-    aviso_inicio = limite_dias - 45 # Empezar a avisar 45 días antes
     hoy = datetime.now()
     enviados = 0
     
+    # DEFINIR LA VENTANA DE AVISO (Días antes del vencimiento)
+    # Antes era 45, lo bajamos a 7 para que avise 1 semana antes.
+    DIAS_AVISO_PREVIO = 7 
+    
     for c in clientes:
-        # Solo clientes con email y servicio registrado
         if c.get('email') and c.get('ultimo_servicio_fmt') != '-':
             try:
                 dt = datetime.strptime(c['ultimo_servicio'][:10], "%Y-%m-%d")
                 delta = (hoy - dt).days
                 dias_restantes = limite_dias - delta
                 
-                # Si está en la ventana de aviso (ej. faltan entre 1 y 45 días)
-                if 0 < dias_restantes <= 45:
-                    # Verificar si ya le escribimos hace menos de 20 días para no ser molestos
+                # CORRECCIÓN: Solo enviar si faltan 7 días o menos (y aún no ha vencido)
+                if 0 < dias_restantes <= DIAS_AVISO_PREVIO:
+                    
+                    # Evitar spam: checar si ya enviamos recordatorio en los últimos 20 días
                     if not verificar_recordatorio_reciente(c['id'], dias_cooldown=20):
                         
-                        # Construir HTML bonito
                         html = f"""
                         <h1>Hola {c['nombre']}</h1>
                         <p>Notamos que tu vehículo está próximo a requerir su mantenimiento preventivo.</p>
