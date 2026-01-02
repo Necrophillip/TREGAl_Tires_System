@@ -4,155 +4,241 @@ from datetime import datetime
 
 def show():
     
+    # Referencias para actualizar la UI
+    chart_flujo = None
+    chart_top = None
+    chart_eq = None
+    chart_prox = None
+    refs = {} 
+
     # ==========================================
-    # 0. DIÁLOGO DE CONFIGURACIÓN (Oculto/Popup)
+    # 1. MOTOR DE DATOS
     # ==========================================
-    # Este bloque define el popup pero no lo muestra hasta que se llame .open()
-    with ui.dialog() as dialog_settings, ui.card().classes('w-96 p-6 shadow-xl rounded-xl'):
-        with ui.row().classes('w-full items-center gap-2 mb-4 border-b pb-2'):
-            ui.icon('settings', size='md', color='slate-700')
-            ui.label('Configuración General').classes('text-xl font-bold text-slate-800')
-            ui.label('Impuestos').classes('text-xs font-bold text-gray-500 uppercase mt-4')
-        with ui.row().classes('w-full items-center'):
-            tasa_iva = ui.number('Tasa IVA (%)', value=db.get_tasa_iva()).classes('w-1/2').props('suffix=%')
-            ui.label('Se desglosará en tickets y nómina.').classes('text-xs text-gray-400 italic')
-        # --- Campo: WhatsApp ---
-        ui.label('Contacto Taller (WhatsApp)').classes('text-xs font-bold text-gray-500 uppercase mt-2')
-        num_whatsapp = ui.input(value=db.get_whatsapp_taller()).props('type=tel prefix="MX (+52)"').classes('w-full')
-        ui.label('El número al que llegarán los mensajes del tracker.').classes('text-xs text-gray-400 italic mb-4')
-
-        # --- Campo: Stock Mínimo ---
-        ui.label('Alertas de Inventario').classes('text-xs font-bold text-gray-500 uppercase')
-        min_stock = ui.number('Stock Mínimo', value=db.get_stock_minimo()).classes('w-full')
-
-        # --- Campo: Sesión ---
-        ui.label('Seguridad').classes('text-xs font-bold text-gray-500 uppercase mt-4')
-        min_sesion = ui.number('Timeout Sesión (minutos)', value=db.get_tiempo_expiracion_minutos()).classes('w-full')
-
-        def guardar_cambios():
-            # Guardamos todo en la DB
-            db.set_whatsapp_taller(num_whatsapp.value)
-            db.set_stock_minimo(int(min_stock.value or 5))
-            db.set_tiempo_expiracion_minutos(int(min_sesion.value or 30))
-            db.set_tasa_iva(float(tasa_iva.value or 0))
+    def refrescar_datos():
+        # --- A. KPIs ---
+        try:
+            kpis = db.obtener_kpis_dashboard()
+            refs['ventas'].text = f"${kpis.get('ventas', 0):,.2f}"
+            refs['autos'].text = f"{kpis.get('autos', 0)}"
+            refs['listos'].text = f"{kpis.get('listos', 0)}"
+            refs['stock'].text = f"{kpis.get('alertas', 0)}"
             
-            ui.notify('✅ Configuración actualizada correctamente', type='positive')
-            dialog_settings.close()
+            # Alerta Stock
+            if kpis.get('alertas', 0) > 0:
+                refs['icon_stock'].props('color=red')
+                refs['card_stock'].classes('border-red-500 bg-red-50', remove='border-gray-200')
+            else:
+                refs['icon_stock'].props('color=grey-4')
+                refs['card_stock'].classes('border-gray-200', remove='border-red-500 bg-red-50')
+        except: pass
 
-        with ui.row().classes('w-full justify-end mt-6'):
-            ui.button('Cancelar', on_click=dialog_settings.close).props('flat color=grey')
-            ui.button('Guardar Cambios', on_click=guardar_cambios).classes('bg-slate-800 text-white shadow-md')
+        # --- B. META (SEMÁFORO DE COLOR 🚦) ---
+        try:
+            met = db.obtener_metricas_ventas_mensuales()
+            ticket = db.obtener_ticket_promedio_mensual()
+            actual = met.get('actual', 0); ant = met.get('anterior', 0)
+            meta = max(ant * 1.10, 20000.0)
+            prog = min(actual / meta if meta > 0 else 0, 1.0)
+            
+            refs['meta_act'].text = f"${actual:,.2f}"
+            refs['meta_obj'].text = f"/ ${meta:,.0f}"
+            refs['ticket'].text = f"Ticket: ${ticket:,.0f}"
+            
+            # Animación de ancho
+            refs['bar_meta'].style(f'width: {prog*100}%')
+            
+            # LÓGICA DE COLORES
+            color_nuevo = 'bg-red-500' # Por defecto (Inicio)
+            if prog >= 1.0:
+                color_nuevo = 'bg-green-500' # Éxito total
+            elif prog >= 0.75:
+                color_nuevo = 'bg-blue-600'  # Ya casi
+            elif prog >= 0.40:
+                color_nuevo = 'bg-orange-400' # Avanzando
+            
+            # IMPORTANTE: Removemos cualquier color viejo para que aplique el nuevo
+            refs['bar_meta'].classes(color_nuevo, remove='bg-red-500 bg-orange-400 bg-blue-600 bg-green-500 bg-indigo-600')
+            
+        except: pass
 
+        # --- C. GRÁFICO FLUJO ---
+        try:
+            flujo = db.obtener_datos_grafico_semanal()
+            if flujo and chart_flujo:
+                chart_flujo.options['xAxis'][0]['data'] = [d['dia'] for d in flujo]
+                chart_flujo.options['series'][0]['data'] = [d['ingresos'] for d in flujo]
+                chart_flujo.options['series'][1]['data'] = [d['salidas'] for d in flujo]
+                chart_flujo.update()
+        except: pass
+
+        # --- D. GRÁFICOS SECUNDARIOS ---
+        try:
+            # Top
+            top = db.obtener_top_servicios()
+            if top and chart_top:
+                chart_top.options['yAxis']['data'] = [x['name'] for x in top]
+                chart_top.options['series'][0]['data'] = [x['value'] for x in top]
+                chart_top.update()
+            
+            # Equipo
+            eq = db.obtener_carga_tecnicos()
+            if eq and chart_eq:
+                chart_eq.options['series'][0]['data'] = eq
+                chart_eq.update()
+        except: pass
+
+        # --- E. CRM (PROYECCIÓN) ---
+        try:
+            all_c = db.obtener_clientes()
+            proximos = []
+            meses = db.get_meses_alerta() or 6
+            limite = meses * 30
+            hoy = datetime.now()
+            
+            for c in all_c:
+                try:
+                    if c.get('ultimo_servicio_fmt') != '-':
+                        dt = datetime.strptime(c['ultimo_servicio'][:10], "%Y-%m-%d")
+                        delta = (hoy - dt).days
+                        if delta >= (limite - 45) and delta < limite:
+                            c['dias_restantes'] = limite - delta
+                            proximos.append(c)
+                except: pass
+            
+            proximos.sort(key=lambda x: x['dias_restantes'])
+            proximos = proximos[:10]
+            
+            if chart_prox:
+                if proximos:
+                    chart_prox.visible = True
+                    refs['prox_msg'].visible = False
+                    
+                    noms = [x['nombre'] for x in proximos]
+                    vals = [{'value': x['dias_restantes'], 'itemStyle': {'color': '#ef4444' if x['dias_restantes']<=7 else '#6366f1'}} for x in proximos]
+                    
+                    chart_prox.options['yAxis']['data'] = noms
+                    chart_prox.options['series'][0]['data'] = vals
+                    chart_prox.update()
+                else:
+                    chart_prox.visible = False
+                    refs['prox_msg'].visible = True
+        except: pass
 
     # ==========================================
-    # CONTENEDOR PRINCIPAL VISIBLE
+    # 2. INTERFAZ
     # ==========================================
-    with ui.column().classes('w-full h-full p-4 gap-4 bg-slate-50'):
+    with ui.column().classes('w-full min-h-screen bg-slate-50 p-6 gap-6'):
         
-        # 1. ENCABEZADO
-        with ui.row().classes('w-full justify-between items-center mb-2'):
+        # --- HEADER ---
+        with ui.row().classes('w-full justify-between items-center'):
             with ui.column().classes('gap-0'):
-                user = app.storage.user.get('username', 'Admin').capitalize()
-                ui.label(f'Hola, {user} 👋').classes('text-2xl font-bold text-slate-800')
-                ui.label(datetime.now().strftime('%A, %d de %B %Y')).classes('text-sm text-slate-500 capitalize')
+                u = app.storage.user.get('username', 'Admin').capitalize()
+                ui.label(f'Hola, {u}').classes('text-2xl font-black text-slate-800')
+                ui.label('Resumen Ejecutivo').classes('text-xs font-bold text-gray-400 uppercase tracking-widest')
             
-            # --- BOTONERA SUPERIOR ---
-            with ui.row().classes('items-center gap-2'):
-                
-                # [SEGURIDAD] Recuperamos el Rol
-                rol_actual = app.storage.user.get('rol', 'tecnico')
+            ui.button(icon='logout', on_click=lambda: (app.storage.user.clear(), ui.navigate.to('/login'))) \
+                .props('flat round color=grey-7')
 
-                # SOLO ADMIN ve el engrane de configuración
-                if rol_actual == 'admin':
-                    ui.button(icon='settings', on_click=dialog_settings.open).props('flat round color=slate-600').tooltip('Configuración')
-                
-                ui.separator().props('vertical')
-                
-                # Botón Logout (Todos lo ven)
-                ui.button('Salir', icon='logout', 
-                          on_click=lambda: (app.storage.user.clear(), ui.navigate.to('/login'))) \
-                          .props('outline color=red-4 size=sm round').tooltip('Cerrar Sesión')
-
-        # 2. TARJETAS KPI (Indicadores)
-        resumen = db.obtener_resumen_mensual()
-        
-        with ui.row().classes('w-full gap-4 no-wrap'):
-            # Tarjeta 1: Cobrado
-            with ui.card().classes('w-1/4 p-3 shadow-sm border-l-4 border-green-500'):
-                ui.label('Ingresos Mes').classes('text-xs font-bold text-gray-400 uppercase')
-                ui.label(f"${resumen['cobrado_mes']:,.2f}").classes('text-xl font-bold text-slate-700')
-                ui.icon('payments', color='green').classes('absolute top-2 right-2 text-xl opacity-20')
-
-            # Tarjeta 2: Por Cobrar
-            with ui.card().classes('w-1/4 p-3 shadow-sm border-l-4 border-orange-400'):
-                ui.label('Por Cobrar').classes('text-xs font-bold text-gray-400 uppercase')
-                ui.label(f"${resumen['pendiente_mes']:,.2f}").classes('text-xl font-bold text-slate-700')
-                ui.icon('pending_actions', color='orange').classes('absolute top-2 right-2 text-xl opacity-20')
-
-            # Tarjeta 3: Autos Activos
-            with ui.card().classes('w-1/4 p-3 shadow-sm border-l-4 border-blue-500'):
-                ui.label('En Taller').classes('text-xs font-bold text-gray-400 uppercase')
-                ui.label(f"{resumen['autos_activos']} autos").classes('text-xl font-bold text-slate-700')
-                ui.icon('garage', color='blue').classes('absolute top-2 right-2 text-xl opacity-20')
-
-            # Tarjeta 4: Alertas Stock
-            with ui.card().classes('w-1/4 p-3 shadow-sm border-l-4 border-red-500'):
-                ui.label('Stock Bajo').classes('text-xs font-bold text-gray-400 uppercase')
-                ui.label(f"{resumen['alertas_stock']} items").classes('text-xl font-bold text-slate-700')
-                ui.icon('inventory_2', color='red').classes('absolute top-2 right-2 text-xl opacity-20')
-
-        # 3. SECCIÓN DIVIDIDA (CRM vs Gráfico)
-        with ui.row().classes('w-full gap-4 items-start'):
+        # --- KPIS ---
+        with ui.row().classes('w-full grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4'):
             
-            # --- IZQUIERDA: CRM (Clientes Vencidos) ---
-            with ui.card().classes('w-2/3 shadow-md'):
-                with ui.row().classes('w-full justify-between items-center border-b pb-2 mb-2'):
-                    with ui.row().classes('items-center gap-2'):
-                        ui.icon('notifications_active', color='orange').classes('text-lg')
-                        ui.label('Recordatorios de Servicio').classes('text-md font-bold text-slate-700')
-                    
-                    todos_clientes = db.obtener_clientes()
-                    vencidos = [c for c in todos_clientes if "Vencido" in c.get('status_alerta', '')]
-                    
-                    if vencidos:
-                        ui.badge(f'{len(vencidos)}', color='red').props('floating')
+            def card_kpi(titulo, icon, color, key):
+                with ui.card().classes('p-4 shadow-sm border border-gray-200 rounded-xl flex-row items-center gap-4'):
+                    with ui.element('div').classes(f'p-3 rounded-full bg-{color}-50'):
+                        ui.icon(icon, color=color, size='md')
+                    with ui.column().classes('gap-0'):
+                        ui.label(titulo).classes('text-[10px] font-bold text-gray-400 uppercase')
+                        refs[key] = ui.label('...').classes('text-xl font-black text-slate-700')
 
-                if not vencidos:
-                    with ui.column().classes('w-full items-center justify-center py-6 text-gray-400'):
-                        ui.icon('check_circle', size='3em', color='green')
-                        ui.label('¡Excelente! Todos los clientes están al día.')
-                else:
-                    columns_crm = [
-                        {'name': 'nombre', 'label': 'Cliente', 'field': 'nombre', 'align': 'left', 'classes': 'font-semibold text-sm'},
-                        {'name': 'telefono', 'label': 'Teléfono', 'field': 'telefono', 'align': 'left', 'classes': 'text-sm'},
-                        {'name': 'ultimo_servicio_fmt', 'label': 'Última Visita', 'field': 'ultimo_servicio_fmt', 'align': 'center', 'classes': 'text-sm'},
-                        {'name': 'status_alerta', 'label': 'Estado', 'field': 'status_alerta', 'align': 'center', 'classes': 'text-red-600 font-bold text-xs bg-red-50 rounded px-1'},
-                    ]
-                    ui.table(columns=columns_crm, rows=vencidos, pagination=5).classes('w-full').props('dense flat')
+            card_kpi('Ventas Mes', 'payments', 'green', 'ventas')
+            card_kpi('En Taller', 'garage', 'indigo', 'autos')
+            card_kpi('Por Entregar', 'key', 'amber', 'listos')
+            
+            # Stock Especial
+            with ui.card().classes('p-4 shadow-sm border border-gray-200 rounded-xl flex-row items-center gap-4') as cs:
+                refs['card_stock'] = cs
+                with ui.element('div').classes('p-3 rounded-full bg-gray-50'):
+                    refs['icon_stock'] = ui.icon('inventory_2', color='grey-4', size='md')
+                with ui.column().classes('gap-0'):
+                    ui.label('STOCK BAJO').classes('text-[10px] font-bold text-gray-400 uppercase')
+                    refs['stock'] = ui.label('...').classes('text-xl font-black text-slate-700')
 
-            # --- DERECHA: GRÁFICO DONA ---
-            with ui.card().classes('w-1/3 shadow-md flex flex-col items-center p-4'):
-                ui.label('Estado del Taller').classes('text-sm font-bold text-gray-500 w-full text-center mb-2')
+        # --- META ---
+        with ui.card().classes('w-full p-5 shadow-sm border border-gray-200 rounded-xl'):
+            with ui.row().classes('w-full justify-between items-end mb-2'):
+                with ui.column().classes('gap-0'):
+                    ui.label('OBJETIVO DE VENTAS').classes('text-[10px] font-bold text-gray-400 uppercase')
+                    with ui.row().classes('items-baseline gap-1'):
+                        refs['meta_act'] = ui.label('$0').classes('text-2xl font-black text-slate-800')
+                        refs['meta_obj'] = ui.label('/ $0').classes('text-sm text-gray-400 font-medium')
+                refs['ticket'] = ui.label('Ticket: $0').classes('text-xs font-mono bg-slate-100 px-2 py-1 rounded text-slate-500')
+            
+            with ui.element('div').classes('w-full h-3 bg-gray-100 rounded-full overflow-hidden'):
+                # Iniciamos con un color base, pero la lógica lo cambiará al cargar
+                refs['bar_meta'] = ui.element('div').classes('h-full bg-gray-300 w-0 transition-all duration-1000')
+
+        # --- GRÁFICOS (GRID ESTABLE) ---
+        with ui.row().classes('w-full grid grid-cols-1 lg:grid-cols-3 gap-6'):
+            
+            # 1. IZQUIERDA: CRM (2 COLUMNAS)
+            with ui.card().classes('lg:col-span-2 p-6 shadow-md border border-gray-200 rounded-xl'):
+                with ui.row().classes('items-center gap-2 mb-4'):
+                    ui.label('Proyección de Servicios (30 Días)').classes('text-lg font-bold text-slate-700')
                 
-                datos_grafico = db.obtener_conteo_estados_servicios()
+                # Contenedor relativo para mensaje "Vacío"
+                with ui.column().classes('w-full relative min-h-[350px]'):
+                    refs['prox_msg'] = ui.label('Sin servicios próximos').classes('absolute-center text-gray-400 hidden')
+                    
+                    # ALTURA FIJA PARA EVITAR COLAPSO
+                    chart_prox = ui.echart({
+                        'tooltip': {'trigger': 'axis'},
+                        'grid': {'left': '3%', 'right': '10%', 'bottom': '5%', 'containLabel': True},
+                        'xAxis': {'type': 'value', 'splitLine': {'show': False}},
+                        'yAxis': {'type': 'category', 'data': [], 'inverse': True, 'axisTick': {'show': False}, 'axisLine': {'show': False}},
+                        'series': [{'type': 'bar', 'data': [], 'barWidth': 20, 'itemStyle': {'borderRadius': [0,4,4,0]}, 'label': {'show': True, 'position': 'right', 'formatter': '{c}d'}}]
+                    }).classes('w-full h-[350px]') 
+
+            # 2. DERECHA: TABS (1 COLUMNA)
+            with ui.card().classes('p-0 shadow-md border border-gray-200 rounded-xl overflow-hidden'):
+                with ui.tabs().classes('w-full bg-white text-gray-500 border-b') as tabs:
+                    t1 = ui.tab('Flujo')
+                    t2 = ui.tab('Top')
+                    t3 = ui.tab('Equipo')
                 
-                if not datos_grafico:
-                    ui.label('Sin datos aún').classes('text-gray-400 py-10')
-                else:
-                    ui.echart({
-                        'tooltip': {'trigger': 'item'},
-                        'legend': {'bottom': '0%', 'left': 'center', 'itemWidth': 10, 'itemHeight': 10},
-                        'series': [
-                            {
-                                'name': 'Servicios',
-                                'type': 'pie',
-                                'radius': ['50%', '70%'],
-                                'center': ['50%', '45%'],
-                                'avoidLabelOverlap': False,
-                                'itemStyle': {'borderRadius': 4, 'borderColor': '#fff', 'borderWidth': 2},
-                                'label': {'show': False, 'position': 'center'},
-                                'emphasis': {'label': {'show': True, 'fontSize': '16', 'fontWeight': 'bold'}},
-                                'data': datos_grafico
-                            }
-                        ]
-                    }).classes('w-full h-48')
+                with ui.tab_panels(tabs, value=t1).classes('w-full'):
+                    
+                    # Panel Flujo
+                    with ui.tab_panel(t1).classes('p-0'):
+                        chart_flujo = ui.echart({
+                            'tooltip': {'trigger': 'axis'},
+                            'legend': {'bottom': 0},
+                            'grid': {'left': '5%', 'right': '5%', 'bottom': '15%', 'top': '10%', 'containLabel': True},
+                            'xAxis': [{'type': 'category', 'data': [], 'axisTick': {'alignWithLabel': True}}],
+                            'yAxis': [{'type': 'value'}],
+                            'series': [
+                                {'name': 'Ent', 'type': 'bar', 'data': [], 'itemStyle': {'color': '#6366f1'}},
+                                {'name': 'Sal', 'type': 'bar', 'data': [], 'itemStyle': {'color': '#10b981'}}
+                            ]
+                        }).classes('w-full h-[350px]') # ALTURA FIJA
+
+                    # Panel Top
+                    with ui.tab_panel(t2).classes('p-0'):
+                        chart_top = ui.echart({
+                            'tooltip': {'trigger': 'axis'},
+                            'grid': {'left': '3%', 'right': '15%', 'bottom': '5%', 'containLabel': True},
+                            'xAxis': {'type': 'value', 'show': False},
+                            'yAxis': {'type': 'category', 'data': [], 'inverse': True, 'axisTick': {'show': False}},
+                            'series': [{'type': 'bar', 'data': [], 'itemStyle': {'color': '#8b5cf6', 'borderRadius': 4}, 'label': {'show': True, 'position': 'right'}}]
+                        }).classes('w-full h-[350px]') # ALTURA FIJA
+
+                    # Panel Equipo
+                    with ui.tab_panel(t3).classes('p-0'):
+                        chart_eq = ui.echart({
+                            'tooltip': {'trigger': 'item'},
+                            'legend': {'top': '5%', 'left': 'center'},
+                            'series': [{'name': 'Autos', 'type': 'pie', 'radius': ['40%', '70%'], 'center': ['50%', '55%'], 'data': [], 'itemStyle': {'borderRadius': 5, 'borderColor': '#fff', 'borderWidth': 2}}]
+                        }).classes('w-full h-[350px]') # ALTURA FIJA
+
+    # Iniciar
+    ui.timer(0.1, refrescar_datos, once=True)
+    ui.timer(5.0, refrescar_datos)

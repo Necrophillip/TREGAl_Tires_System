@@ -13,403 +13,343 @@ def show():
     rol_usuario = app.storage.user.get('rol', 'tecnico')
     user_worker_id = app.storage.user.get('trabajador_id')
     es_admin = (rol_usuario == 'admin')
+    
+    # Variable de Estado
+    filtro_estado = {'valor': 'Todos'} 
+    
+    # Diccionario para controlar los botones
+    refs_botones = {}
+
+    # --- NUEVO: Función para copiar link al portapapeles ---
+    async def copiar_link_tracker(uuid_publico):
+        if not uuid_publico:
+            ui.notify('Este servicio no tiene enlace generado', type='warning')
+            return
+        
+        # Usamos JS para copiar la URL completa del navegador
+        js_code = f"navigator.clipboard.writeText(window.location.origin + '/status/{uuid_publico}')"
+        await ui.run_javascript(js_code)
+        ui.notify('🔗 Enlace copiado al portapapeles', type='positive')
 
     # ==========================================
-    # 2. GESTIÓN DE TABLAS (REFRESCO DE DATOS)
+    # 2. GESTIÓN DE TABLAS
     # ==========================================
     def actualizar_tablas():
-        # --- A. TABLA COTIZACIONES (Solo Admin) ---
+        # --- A. COTIZACIONES ---
         if es_admin:
-            # Convertimos a dict para poder manipular los datos
             raw_cots = db.obtener_cotizaciones()
             rows_cot = [dict(r) for r in raw_cots] 
-
             for r in rows_cot:
-                # Formateamos moneda
                 r['costo_fmt'] = f"${r['costo_estimado']:,.2f}"
-            
-            # Asignamos a la tabla
             tabla_cotizaciones.rows = rows_cot
             tabla_cotizaciones.update()
         
-        # --- B. TABLA TALLER ACTIVO (Todos) ---
-        # Si es técnico, solo ve sus asignaciones. Admin ve todo.
-        filtro = None if es_admin else user_worker_id
-        
-        raw_servicios = db.obtener_servicios_activos(filtro_trabajador_id=filtro)
+        # --- B. TALLER ACTIVO ---
+        filtro_user = None if es_admin else user_worker_id
+        raw_servicios = db.obtener_servicios_activos(filtro_trabajador_id=filtro_user)
         rows_ord = [dict(r) for r in raw_servicios]
 
+        # Contadores
+        conteo = {'Todos': 0, 'Diagnóstico': 0, 'Reparación': 0, 'Piezas': 0, 'Listo': 0}
+        
         for r in rows_ord:
-            # Formato de dinero (oculto para técnicos)
-            if es_admin:
-                r['costo_fmt'] = f"${r['costo_estimado']:,.2f}"
-            else:
-                r['costo_fmt'] = "***"
-            
-            # Sanitización de datos para la UI
+            # Formatos
+            r['costo_fmt'] = f"${r['costo_estimado']:,.2f}" if es_admin else "***"
             r['asignado_str'] = r.get('nombre_tecnico') or 'Sin Asignar'
-            if 'estatus_detalle' not in r: r['estatus_detalle'] = 'Diagnóstico'
+            st = r.get('estatus_detalle', 'Diagnóstico')
+            r['estatus_detalle'] = st
             
-            # Convertir fechas a string seguro
-            if 'fecha' in r and not isinstance(r['fecha'], str):
-                r['fecha'] = str(r['fecha'])
+            # Conteo
+            conteo['Todos'] += 1
+            if st in conteo: conteo[st] += 1
 
-        tabla_servicios.rows = rows_ord
+            # Semáforo de Tiempo 🚦
+            try:
+                fecha_str = str(r['fecha'])[:16] # Cortar segundos
+                fecha_ingreso = datetime.strptime(fecha_str, "%Y-%m-%d %H:%M")
+                dias = (datetime.now() - fecha_ingreso).days
+            except:
+                dias = 0
+            
+            r['dias_taller'] = dias
+            if dias < 3:
+                r['clase_tiempo'] = 'text-green-600 font-bold'
+                r['icon_tiempo'] = 'sentiment_satisfied'
+            elif dias < 6:
+                r['clase_tiempo'] = 'text-orange-500 font-bold'
+                r['icon_tiempo'] = 'warning'
+            else:
+                r['clase_tiempo'] = 'text-red-600 font-black'
+                r['icon_tiempo'] = 'local_fire_department'
+
+        # Filtrado
+        if filtro_estado['valor'] != 'Todos':
+            rows_filtradas = [r for r in rows_ord if r['estatus_detalle'] == filtro_estado['valor']]
+        else:
+            rows_filtradas = rows_ord
+
+        tabla_servicios.rows = rows_filtradas
         tabla_servicios.update()
+        
+        # Actualizar texto de botones con contadores
+        if refs_botones:
+            try:
+                refs_botones['Todos'].text = f"Todos ({conteo['Todos']})"
+                refs_botones['Diagnóstico'].text = f"Diagnóstico ({conteo['Diagnóstico']})"
+                refs_botones['Reparación'].text = f"Reparación ({conteo['Reparación']})"
+                refs_botones['Piezas'].text = f"Piezas ({conteo['Piezas']})"
+                refs_botones['Listo'].text = f"Listos ({conteo['Listo']})"
+                # Pequeño update para refrescar texto
+                for btn in refs_botones.values(): btn.update()
+            except: pass
 
     # ==========================================
-    # 3. LÓGICA DEL WORKFLOW (ACCIONES)
+    # 3. ACCIONES
     # ==========================================
     
+    def cambiar_filtro(nuevo_filtro):
+        filtro_estado['valor'] = nuevo_filtro
+        
+        # LÓGICA BLINDADA DE ESTILOS 🛡️
+        for nombre, btn in refs_botones.items():
+            if nombre == nuevo_filtro:
+                # ACTIVO
+                btn.props('unelevated no-caps rounded') 
+                btn.classes('bg-slate-800 text-white', remove='text-slate-500 bg-transparent')
+            else:
+                # INACTIVO
+                btn.props('flat no-caps rounded') 
+                btn.classes('text-slate-500 bg-transparent', remove='bg-slate-800 text-white')
+            
+            btn.update() 
+            
+        actualizar_tablas()
+
     def crear_nueva_entrada():
         if not select_auto.value or not descripcion.value:
             ui.notify('Faltan datos obligatorios', type='warning'); return
-        
-        tipo = tipo_entrada.value # 'Cotizacion' o 'Orden'
-        # Seguridad: Técnico no puede crear Cotizaciones, forzamos Orden
-        if not es_admin: tipo = 'Orden'
-
+        tipo = tipo_entrada.value if es_admin else 'Orden'
         c_ini = costo_inicial.value if es_admin else 0.0
+        id_asignado = select_asignacion.value if (es_admin and select_asignacion) else user_worker_id 
         
-        id_asignado = None
-        if tipo == 'Orden':
-            if es_admin and select_asignacion: id_asignado = select_asignacion.value 
-            elif not es_admin: id_asignado = user_worker_id 
-
         db.crear_servicio(select_auto.value, descripcion.value, c_ini, id_asignado, tipo_doc=tipo)
-        
         ui.notify(f'{tipo} creada exitosamente', type='positive')
-        # Limpieza de formulario
         select_auto.value = None; descripcion.value = ''
         if es_admin: costo_inicial.value = 0
         actualizar_tablas()
 
-    # RC4 
+    def aprobar_cotizacion(sid):
+        ok, msg = db.convertir_cotizacion_a_orden(sid, tecnico_id=(None if es_admin else user_worker_id))
+        ui.notify(msg, type='positive' if ok else 'negative')
+        if ok: actualizar_tablas()
 
-    def aprobar_cotizacion(id_servicio):
-        tech_id = user_worker_id if not es_admin else None
-        
-        # CAMBIO: Ahora capturamos el resultado (ok, msg)
-        ok, msg = db.convertir_cotizacion_a_orden(id_servicio, tecnico_id=tech_id)
-        
-        if ok:
-            ui.notify(f'✅ {msg}', type='positive')
-            actualizar_tablas()
-            if es_admin: tabs_control.value = 'tab_taller' # Auto-cambiar tab
-        else:
-            ui.notify(f'❌ Error al aprobar: {msg}', type='negative')
-
-    def cambiar_estatus_flujo(id_servicio, nuevo_estatus):
-        db.actualizar_estatus_servicio(id_servicio, nuevo_estatus)
-        ui.notify(f'Estatus actualizado: {nuevo_estatus}', type='positive')
+    def cambiar_estatus_flujo(sid, st):
+        db.actualizar_estatus_servicio(sid, st)
+        ui.notify(f'Estatus: {st}', type='positive')
         actualizar_tablas()
 
-# --- RC5 FUNCIÓN DE ENVÍO ---
-    # --- RC5 FUNCIÓN DE ENVÍO ASÍNCRONA (CORREGIDA) ---
     async def enviar_nota_por_correo(sid):
-        # 1. Obtener datos del cliente
-        info_cliente = db.obtener_email_cliente_por_servicio(sid)
-        if not info_cliente or not info_cliente['email']:
-            ui.notify('Este cliente no tiene correo registrado 😟', type='warning')
-            return
-
-        # 2. Generar el PDF fresco
+        info = db.obtener_email_cliente_por_servicio(sid)
+        if not info or not info['email']: ui.notify('Cliente sin email', type='warning'); return
+        
         datos = db.obtener_datos_completos_pdf(sid)
         if not datos: return
+        ruta = pdf_generator.generar_pdf_cotizacion(datos, 0, titulo="NOTA DE SERVICIO")
         
-        # Generamos PDF temporal
-        # OJO: Asegúrate de que 'pdf_generator' esté importado arriba
-        ruta_pdf = pdf_generator.generar_pdf_cotizacion(datos, 0, titulo="NOTA DE SERVICIO")
-        
-        # 3. Notificación (Spinner)
-        n = ui.notification('Enviando correo (segundo plano)...', spinner=True, timeout=None)
-        
-        cuerpo = f"""Hola {info_cliente['nombre']},
-        
-Adjunto encontrarás el detalle de tu servicio en TREGAL Tires.
-Gracias por tu preferencia.
-        
-Atte. El Equipo TREGAL."""
-
-        # 4. ENVIAR SIN CONGELAR (run.io_bound)
+        n = ui.notification('Enviando...', spinner=True)
         try:
-            # Ejecutamos el envío en un hilo separado para que no bloquee el servidor
-            ok, msg = await run.io_bound(
-                email_service.enviar_correo_con_pdf, 
-                info_cliente['email'], 
-                f"Tu Servicio #{sid} - TREGAL Tires", 
-                cuerpo, 
-                ruta_pdf
-            )
-            
-            n.dismiss() # Quitar spinner
-            
-            if ok:
-                ui.notify(f'📨 {msg} a {info_cliente["email"]}', type='positive')
-            else:
-                ui.notify(f'❌ {msg}', type='negative')
-
-        except Exception as e:
+            ok, msg = await run.io_bound(email_service.enviar_correo_con_pdf, 
+                                       info['email'], f"Servicio #{sid}", 
+                                       f"Hola {info['nombre']},\nAdjunto detalle.\nAtte TREGAL", ruta)
             n.dismiss()
-            ui.notify(f"Error crítico enviando: {e}", type='negative')
-            print(f"Error Email: {e}")
-
+            ui.notify(msg, type='positive' if ok else 'negative')
+        except Exception as e:
+            n.dismiss(); ui.notify(f"Error: {e}", type='negative')
         finally:
-            # 5. Limpieza: Borrar el PDF temporal siempre
-            if os.path.exists(ruta_pdf): 
-                try:
-                    os.remove(ruta_pdf)
-                except:
-                    pass
-    # ==========================================
-    # 4. DIÁLOGOS Y MODALES
-    # ==========================================
+            if os.path.exists(ruta): os.remove(ruta)
 
-    # --- A. VISOR DE PDF (NUEVO FEATURE) ---
+    # ==========================================
+    # 4. DIÁLOGOS
+    # ==========================================
+    
+    # VISOR PDF
     with ui.dialog() as dialog_visor_pdf, ui.card().classes('w-[90vw] h-[90vh] p-0'):
-        with ui.row().classes('w-full bg-slate-800 text-white p-2 items-center justify-between'):
-            ui.label('Vista Previa de Documento').classes('text-lg font-bold ml-2')
+        with ui.row().classes('w-full bg-slate-800 text-white p-2 justify-between items-center'):
+            ui.label('Vista Previa').classes('ml-2 font-bold')
             ui.button(icon='close', on_click=dialog_visor_pdf.close).props('flat round dense text-color=white')
         
-        # Contenedor para el Iframe
         visor_container = ui.html('', sanitize=False).classes('w-full h-full')
 
     def previsualizar_documento(sid, es_cotizacion=False):
-        """Genera el PDF, lo convierte a Base64 y lo muestra en el visor"""
         datos = db.obtener_datos_completos_pdf(sid)
-        if not datos:
-            ui.notify("No se encontraron datos para este servicio", type='negative')
-            return
-
-        # LÓGICA DE TÍTULO DINÁMICO
-        titulo_doc = "COTIZACIÓN" if es_cotizacion else "NOTA DE MOSTRADOR"
-        
+        if not datos: return
         try:
-            # Generamos el archivo PDF (Pasamos el título dinámico)
-            ruta_pdf = pdf_generator.generar_pdf_cotizacion(datos, 15, titulo=titulo_doc)
-            
-            # Leemos el archivo generado para convertirlo a Base64
-            with open(ruta_pdf, "rb") as pdf_file:
-                base64_pdf = base64.b64encode(pdf_file.read()).decode('utf-8')
-            
-            # Creamos el iframe (#toolbar=1 activa el menú de impresión del navegador)
-            src = f"data:application/pdf;base64,{base64_pdf}#toolbar=1"
-            content = f'<iframe src="{src}" width="100%" height="100%" style="border:none;"></iframe>'
-            
-            visor_container.content = content
+            ruta = pdf_generator.generar_pdf_cotizacion(datos, 15, titulo=("COTIZACIÓN" if es_cotizacion else "NOTA"))
+            with open(ruta, "rb") as f: b64 = base64.b64encode(f.read()).decode('utf-8')
+            visor_container.content = f'<iframe src="data:application/pdf;base64,{b64}#toolbar=1" width="100%" height="100%" style="border:none;"></iframe>'
             dialog_visor_pdf.open()
-            
-        except Exception as e:
-            ui.notify(f"Error generando PDF: {str(e)}", type='negative')
+        except Exception as e: ui.notify(f"Error PDF: {e}", type='negative')
 
-    # --- B. AGREGAR SERVICIO ---
-    with ui.dialog() as dialog_servicio_cat, ui.card().classes('w-96'):
+    # MODALES GESTIÓN
+    with ui.dialog() as d_serv, ui.card().classes('w-96'):
         ui.label('Agregar Servicio').classes('text-xl font-bold text-indigo-700')
-        opciones_cat = db.obtener_servicios_para_select()
-        sel_servicio = ui.select(options=opciones_cat, label='Servicio del Catálogo', with_input=True).classes('w-full')
+        sel_s = ui.select(db.obtener_servicios_para_select(), label='Servicio', with_input=True).classes('w-full')
+        sel_t = ui.select(db.obtener_trabajadores_select(), label='Técnico').classes('w-full')
+        num_c = ui.number('Precio', prefix='$').classes('w-full').bind_visibility_from(sel_s, 'value')
         
-        sel_trab_com = ui.select(options=db.obtener_trabajadores_select(), label='Técnico Realiza').classes('w-full')
-        if not es_admin: sel_trab_com.disable()
-
-        num_costo = ui.number('Precio Venta').classes('w-full').props('prefix="$"').bind_visibility_from(sel_servicio, 'value')
-        if not es_admin: num_costo.visible = False 
-
-        def al_seleccionar_servicio(e):
-            if e.value and es_admin:
+        def add_s_click():
+            txt = "Manual"; c = float(num_c.value or 0)
+            if sel_s.value: 
+                opts = db.obtener_servicios_para_select()
+                if sel_s.value in opts: txt = opts[sel_s.value].split(' - $')[0]
+            
+            wd = db.obtener_trabajador_detalle(sel_t.value)
+            pct = wd['pct_mano_obra'] if wd else 0
+            db.agregar_tarea_comision(d_serv.sid, sel_t.value, txt, c, pct)
+            ui.notify('Agregado', type='positive'); d_serv.close(); actualizar_tablas()
+            
+        ui.button('Agregar', on_click=add_s_click).classes('w-full bg-indigo-600 text-white')
+        def on_s_change(e): 
+            if e.value and es_admin: 
                 cats = db.obtener_catalogo_servicios()
-                for c in cats:
-                    if c['id'] == e.value: num_costo.value = c['precio_base']; break
-        sel_servicio.on_value_change(al_seleccionar_servicio)
+                for x in cats: 
+                    if x['id']==e.value: num_c.value=x['precio_base']
+        sel_s.on_value_change(on_s_change)
 
-        def guardar_servicio_orden():
-            txt_servicio = "Servicio Manual"
-            if sel_servicio.value:
-                for cid, cname in opciones_cat.items():
-                    if cid == sel_servicio.value: txt_servicio = cname.split(' - $')[0]; break
-            
-            costo_final = float(num_costo.value or 0) if es_admin else 0
-            
-            # Calculamos comisión básica
-            worker_data = db.obtener_trabajador_detalle(sel_trab_com.value)
-            pct = worker_data['pct_mano_obra'] if worker_data else 0
-            
-            db.agregar_tarea_comision(dialog_servicio_cat.sid, sel_trab_com.value, txt_servicio, costo_final, pct)
-            ui.notify('Servicio agregado', type='positive'); dialog_servicio_cat.close(); actualizar_tablas()
+    def abrir_add_serv(sid):
+        sel_s.set_options(db.obtener_servicios_para_select()); sel_s.value=None; num_c.value=0
+        sel_t.value = user_worker_id; sel_t.disable() if not es_admin else sel_t.enable()
+        if not es_admin: num_c.visible=False
+        d_serv.sid=sid; d_serv.open()
 
-        ui.button('Agregar a la Orden', on_click=guardar_servicio_orden).classes('w-full bg-indigo-600 text-white')
+    with ui.dialog() as d_ref, ui.card():
+        ui.label('Refacción').classes('text-xl font-bold text-orange-700')
+        sel_r = ui.select(db.obtener_inventario_select(), label='Pieza', with_input=True).classes('w-full')
+        num_r = ui.number('Cant', value=1).classes('w-full')
+        def add_r_click():
+            ok, m = db.agregar_refaccion_a_servicio(d_ref.sid, sel_r.value, int(num_r.value))
+            ui.notify(m, type='positive' if ok else 'negative'); d_ref.close(); actualizar_tablas()
+        ui.button('Descontar', on_click=add_r_click).classes('w-full bg-orange-600 text-white')
+    def abrir_add_ref(sid):
+        sel_r.set_options(db.obtener_inventario_select()); sel_r.value=None; num_r.value=1
+        d_ref.sid=sid; d_ref.open()
 
-    def abrir_agregar_servicio(sid):
-        # 1. Recargar opciones del catálogo (por si cambiaste precios)
-        sel_servicio.options = db.obtener_servicios_para_select()
-        sel_servicio.update()
-        
-        # 2. Resetear
-        sel_servicio.value = None
-        num_costo.value = 0
-        sel_trab_com.value = user_worker_id 
-        
-        # 3. Abrir
-        dialog_servicio_cat.sid = sid
-        dialog_servicio_cat.open()
+    with ui.dialog() as d_cobro, ui.card().classes('w-96'):
+        ui.label('Cobrar').classes('text-xl font-bold text-green-700')
+        lbl_tot = ui.label().classes('text-2xl font-black self-center my-2')
+        sel_met = ui.select(['Efectivo', 'Tarjeta', 'Transferencia'], value='Efectivo', label='Método').classes('w-full')
+        txt_ref = ui.input('Referencia').classes('w-full')
+        sel_caj = ui.select(db.obtener_trabajadores_select(), label='Recibe').classes('w-full')
+        def cobro_click():
+            db.cerrar_servicio(d_cobro.sid, f"T-{d_cobro.sid}", sel_caj.value, d_cobro.monto, sel_met.value, txt_ref.value)
+            ui.notify('Cobrado', type='positive'); d_cobro.close(); actualizar_tablas()
+        ui.button('Confirmar', on_click=cobro_click).classes('w-full bg-green-700 text-white')
+    def abrir_cobro(row):
+        sel_caj.value = user_worker_id; d_cobro.sid=row['id']; d_cobro.monto=row['costo_estimado']
+        lbl_tot.text=row['costo_fmt']; d_cobro.open()
 
-    # --- C. AGREGAR REFACCIÓN ---
-    with ui.dialog() as dialog_refaccion, ui.card():
-        ui.label('Refacción de Inventario').classes('text-xl font-bold text-orange-700')
-        sel_prod = ui.select(options=db.obtener_inventario_select(), label='Pieza', with_input=True).classes('w-full')
-        num_cant = ui.number('Cantidad', value=1).classes('w-full')
-        def guardar_refaccion():
-            ok, msg = db.agregar_refaccion_a_servicio(dialog_refaccion.sid, sel_prod.value, int(num_cant.value))
-            if ok: ui.notify(msg, type='positive'); dialog_refaccion.close(); actualizar_tablas()
-            else: ui.notify(msg, type='negative')
-        ui.button('Descontar de Inventario', on_click=guardar_refaccion).classes('w-full bg-orange-600 text-white')
-    def abrir_refaccion(sid):
-        # 1. Forzamos la recarga de opciones desde la DB
-        sel_prod.options = db.obtener_inventario_select()
-        sel_prod.update()
-        
-        # 2. Reseteamos valores
-        sel_prod.value = None
-        num_cant.value = 1
-        
-        # 3. Abrimos
-        dialog_refaccion.sid = sid
-        dialog_refaccion.open()
-
-    # --- D. CIERRE DE CAJA (COBRO) ---
-    with ui.dialog() as dialog_cierre, ui.card().classes('w-96'):
-        ui.label('Cierre de Caja').classes('text-xl font-bold text-green-700')
-        lbl_total_cobrar = ui.label('').classes('text-2xl font-black self-center my-2')
-        sel_metodo = ui.select(['Efectivo', 'Tarjeta Débito', 'Tarjeta Crédito', 'Transferencia'], label='Método de Pago', value='Efectivo').classes('w-full')
-        txt_ref = ui.input('Referencia / Voucher / Folio').classes('w-full')
-        sel_cajero = ui.select(options=db.obtener_trabajadores_select(), label='Recibe el Pago').classes('w-full')
-        
-        def confirmar_cobro():
-            db.cerrar_servicio(dialog_cierre.sid, f"T-{dialog_cierre.sid}", sel_cajero.value, dialog_cierre.monto, metodo_pago=sel_metodo.value, ref_pago=txt_ref.value)
-            ui.notify('💰 Cobro registrado y Ticket generado', type='positive'); dialog_cierre.close(); actualizar_tablas()
-        ui.button('Confirmar Pago', on_click=confirmar_cobro).classes('bg-green-700 text-white w-full')
-
-    def abrir_cierre(row):
-        if not es_admin: return 
-        sel_cajero.value = user_worker_id
-        dialog_cierre.sid = row['id']
-        dialog_cierre.monto = row['costo_estimado']
-        lbl_total_cobrar.text = row['costo_fmt']
-        dialog_cierre.open()
-
-    # --- E. EDITOR DE ÍTEMS (NUEVO) ---
-    with ui.dialog() as dialog_editor, ui.card().classes('w-[600px]'):
-        with ui.row().classes('w-full items-center justify-between'):
-            ui.label('✏️ Editar Contenido de la Orden').classes('text-xl font-bold text-slate-700')
-            ui.button(icon='close', on_click=dialog_editor.close).props('flat round dense')
-        
-        # Contenedor donde pintaremos la lista dinámica
-        lista_items_container = ui.column().classes('w-full gap-2')
-
-    def cargar_editor_items(sid):
-        dialog_editor.sid = sid # Guardamos ID en el dialogo
-        lista_items_container.clear() # Limpiamos lista anterior
-        
-        items = db.obtener_items_editables(sid)
-        
-        with lista_items_container:
-            if not items:
-                ui.label('La orden está vacía').classes('italic text-gray-400 self-center')
-            
-            for item in items:
-                with ui.row().classes('w-full items-center justify-between p-2 bg-gray-50 rounded border hover:bg-gray-100'):
-                    # Icono según tipo
-                    icono = 'engineering' if item['tipo'] == 'MO' else 'inventory_2'
-                    color_icon = 'indigo' if item['tipo'] == 'MO' else 'orange'
-                    
-                    with ui.row().classes('items-center gap-3'):
-                        ui.icon(icono, color=color_icon).classes('text-xl')
-                        with ui.column().classes('gap-0'):
-                            ui.label(item['desc']).classes('font-bold leading-tight')
-                            ui.label(f"Cant: {item['cant']} | Total: ${item['total']:,.2f}").classes('text-xs text-gray-500')
-                    
-                    # Botón Eliminar
-                    ui.button(icon='delete', color='red', on_click=lambda e, i=item: borrar_item_wrapper(i)).props('flat round dense').tooltip('Eliminar de la orden')
-
-        dialog_editor.open()
-
-    def borrar_item_wrapper(item):
-        ok, msg = db.eliminar_item_orden(item['tipo'], item['id'], dialog_editor.sid)
-        if ok:
-            ui.notify(msg, type='positive')
-            cargar_editor_items(dialog_editor.sid) # Refresca la lista del popup
-            actualizar_tablas() # <--- ESTO ES VITAL: Refresca la tabla principal
-        else:
-            ui.notify(f"Error: {msg}", type='negative')
+    with ui.dialog() as d_edit, ui.card().classes('w-[600px]'):
+        with ui.row().classes('w-full justify-between'):
+            ui.label('Editar Ítems').classes('text-xl font-bold'); ui.button(icon='close', on_click=d_edit.close).props('flat dense')
+        cont_items = ui.column().classes('w-full gap-2')
+    def load_items(sid):
+        d_edit.sid=sid; cont_items.clear(); items = db.obtener_items_editables(sid)
+        with cont_items:
+            if not items: ui.label('Vacío').classes('italic text-gray-400')
+            for i in items:
+                with ui.row().classes('w-full justify-between p-2 border rounded items-center'):
+                    ui.label(f"{i['desc']} (x{i['cant']})").classes('font-bold')
+                    ui.button(icon='delete', color='red', on_click=lambda e, x=i: del_item(x)).props('flat dense')
+        d_edit.open()
+    def del_item(i):
+        ok, m = db.eliminar_item_orden(i['tipo'], i['id'], d_edit.sid)
+        if ok: load_items(d_edit.sid); actualizar_tablas()
+        else: ui.notify(m, type='negative')
 
     # ==========================================
     # 5. ESTRUCTURA VISUAL PRINCIPAL
     # ==========================================
     with ui.column().classes('w-full h-full p-4 gap-4 bg-gray-50'):
         
-        # Header
-        with ui.row().classes('w-full justify-between items-center'):
-            with ui.row().classes('items-center gap-2'):
-                ui.icon('handyman', size='lg', color='primary')
-                titulo = 'Gestión de Taller' if es_admin else 'Mis Asignaciones'
-                ui.label(titulo).classes('text-2xl font-bold text-gray-800')
+        # --- FILTROS RÁPIDOS ---
+        with ui.row().classes('w-full justify-start gap-2 bg-white p-2 rounded shadow-sm border border-gray-200'):
+            ui.icon('filter_alt', color='gray').classes('self-center ml-2')
+            ui.label('Filtros:').classes('self-center font-bold text-gray-500 mr-2')
+            
+            refs_botones['Todos'] = ui.button('Todos', on_click=lambda: cambiar_filtro('Todos')) \
+                .props('unelevated no-caps rounded') \
+                .classes('bg-slate-800 text-white')
+            
+            refs_botones['Diagnóstico'] = ui.button('Diagnóstico', on_click=lambda: cambiar_filtro('Diagnóstico')) \
+                .props('flat no-caps rounded') \
+                .classes('text-slate-500')
+                
+            refs_botones['Reparación'] = ui.button('Reparación', on_click=lambda: cambiar_filtro('Reparación')) \
+                .props('flat no-caps rounded') \
+                .classes('text-slate-500')
+                
+            refs_botones['Piezas'] = ui.button('Piezas', on_click=lambda: cambiar_filtro('Piezas')) \
+                .props('flat no-caps rounded') \
+                .classes('text-slate-500')
+                
+            refs_botones['Listo'] = ui.button('Listos', on_click=lambda: cambiar_filtro('Listo')) \
+                .props('flat no-caps rounded') \
+                .classes('text-slate-500')
 
-        # Contenedor Principal (Split View)
+        # Split View
         with ui.row().classes('w-full flex-nowrap items-start gap-6'):
             
-            # --- PANEL IZQUIERDO: FORMULARIO DE ENTRADA ---
+            # PANEL IZQ: FORM
             with ui.card().classes('w-1/3 min-w-[350px] p-4 shadow-lg sticky top-4 border-t-4 border-blue-500'):
                 ui.label('📍 Nueva Entrada').classes('text-lg font-bold text-slate-700 mb-2')
-                
-                # Switch Tipo (Solo Admin)
-                tipo_entrada = ui.toggle(['Orden', 'Cotizacion'], value='Orden').props('spread no-caps active-class="bg-blue-700 text-white"').classes('w-full border rounded mb-4')
+                tipo_entrada = ui.toggle(['Orden', 'Cotizacion'], value='Orden').props('spread no-caps').classes('w-full border rounded mb-4')
                 if not es_admin: tipo_entrada.visible = False 
-
-                # Selector Auto
                 with ui.row().classes('w-full items-center gap-2'):
-                    opciones_autos = db.obtener_vehiculos_select_format()
-                    select_auto = ui.select(options=opciones_autos, label='Vehículo', with_input=True).classes('flex-grow')
+                    select_auto = ui.select(db.obtener_vehiculos_select_format(), label='Vehículo', with_input=True).classes('flex-grow')
                     ui.button(icon='refresh', on_click=lambda: select_auto.set_options(db.obtener_vehiculos_select_format())).props('flat round dense')
-
                 descripcion = ui.textarea('Falla / Solicitud').classes('w-full').props('rows=3')
-                
-                # Asignación (Solo Admin)
                 select_asignacion = None
                 if es_admin:
                     with ui.column().classes('w-full').bind_visibility_from(tipo_entrada, 'value', value='Orden'):
-                        select_asignacion = ui.select(options=db.obtener_trabajadores_select(), label='Asignar Técnico').classes('w-full')
-                        costo_inicial = ui.number('Costo Revisión', value=0).classes('w-full').props('prefix="$"')
-
+                        select_asignacion = ui.select(db.obtener_trabajadores_select(), label='Asignar Técnico').classes('w-full')
+                        costo_inicial = ui.number('Costo Rev.', value=0, prefix='$').classes('w-full')
                 ui.button('Crear Registro', icon='save', on_click=crear_nueva_entrada).classes('w-full mt-4 bg-slate-800 text-white')
 
-            # --- PANEL DERECHO: TABS Y TABLAS ---
+            # PANEL DER: TABLA
             with ui.card().classes('flex-grow w-0 p-0 shadow-lg overflow-hidden'):
-                
                 with ui.tabs().classes('w-full text-grey') as tabs_control:
-                    tab_taller = ui.tab('tab_taller', label='🔧 En Proceso', icon='build').classes('text-blue-700')
-                    # Tab Cotizaciones (Solo Admin)
-                    if es_admin:
-                        tab_cots = ui.tab('tab_cots', label='📋 Cotizaciones', icon='request_quote').classes('text-orange-700')
+                    tab_taller = ui.tab('tab_taller', label='Taller Activo', icon='build').classes('text-blue-700')
+                    if es_admin: tab_cots = ui.tab('tab_cots', label='Cotizaciones', icon='request_quote').classes('text-orange-700')
 
-                with ui.tab_panels(tabs_control, value='tab_taller').classes('w-full p-4'):
+                with ui.tab_panels(tabs_control, value='tab_taller').classes('w-full p-0'):
                     
-                    # --- TAB 1: TALLER ACTIVO ---
-                    with ui.tab_panel(tab_taller):
-                        cols_taller = [
+                    with ui.tab_panel(tab_taller).classes('p-0'):
+                        cols = [
                             {'name': 'id', 'label': '#', 'field': 'id', 'align': 'center', 'classes': 'text-gray-400 font-bold'},
-                            {'name': 'estatus', 'label': 'Estado', 'field': 'estatus_detalle', 'align': 'center', 'classes': 'font-bold text-blue-600'},
+                            {'name': 'tiempo', 'label': 'Días', 'field': 'dias_taller', 'align': 'center', 'sortable': True},
+                            {'name': 'estatus', 'label': 'Estado', 'field': 'estatus_detalle', 'align': 'center'},
                             {'name': 'vehiculo', 'label': 'Auto', 'field': 'modelo', 'classes': 'font-bold'},
-                            {'name': 'desc', 'label': 'Trabajo', 'field': 'descripcion', 'classes': 'italic text-xs text-wrap max-w-[200px]'},
+                            {'name': 'desc', 'label': 'Trabajo', 'field': 'descripcion', 'classes': 'italic text-xs max-w-[200px] truncate'},
                         ]
-                        if es_admin:
-                            cols_taller.append({'name': 'monto', 'label': 'Total', 'field': 'costo_fmt', 'align': 'right', 'classes': 'text-green-700 font-bold'})
-                        cols_taller.append({'name': 'acciones', 'label': 'Acciones', 'field': 'acciones', 'align': 'center'})
+                        if es_admin: cols.append({'name': 'monto', 'label': 'Total', 'field': 'costo_fmt', 'align': 'right', 'classes': 'text-green-700 font-bold'})
+                        cols.append({'name': 'acciones', 'label': 'Acciones', 'field': 'acciones', 'align': 'center'})
 
-                        tabla_servicios = ui.table(columns=cols_taller, rows=[], row_key='id', pagination=10).classes('w-full')
+                        tabla_servicios = ui.table(columns=cols, rows=[], row_key='id', pagination=10).classes('w-full remove-padding')
                         
+                        # SLOT TIEMPO
+                        tabla_servicios.add_slot('body-cell-tiempo', r'''
+                            <q-td :props="props">
+                                <div class="flex items-center justify-center gap-1">
+                                    <q-icon :name="props.row.icon_tiempo" size="xs" :class="props.row.clase_tiempo" />
+                                    <span :class="props.row.clase_tiempo">{{ props.value }}d</span>
+                                </div>
+                            </q-td>
+                        ''')
                         # SLOT ESTATUS
                         tabla_servicios.add_slot('body-cell-estatus', r'''
                             <q-td :props="props">
-                                <q-btn-dropdown auto-close flat dense size="sm" :label="props.value" color="primary">
+                                <q-btn-dropdown auto-close flat dense size="sm" :label="props.value" 
+                                    :color="props.value == 'Listo' ? 'green' : (props.value == 'Piezas' ? 'orange' : 'primary')">
                                     <q-list>
                                         <q-item clickable @click="$parent.$emit('cambiar_status', {id: props.row.id, st: 'Diagnóstico'})"><q-item-section>🔍 Diagnóstico</q-item-section></q-item>
                                         <q-item clickable @click="$parent.$emit('cambiar_status', {id: props.row.id, st: 'Reparación'})"><q-item-section>🔧 Reparación</q-item-section></q-item>
@@ -417,74 +357,46 @@ Atte. El Equipo TREGAL."""
                                         <q-item clickable @click="$parent.$emit('cambiar_status', {id: props.row.id, st: 'Listo'})"><q-item-section>✅ Listo p/Entrega</q-item-section></q-item>
                                     </q-list>
                                 </q-btn-dropdown>
-                                <q-btn flat round dense icon="link" size="xs" color="grey" @click="$parent.$emit('link', props.row.uuid_publico)"><q-tooltip>Link Cliente</q-tooltip></q-btn>
                             </q-td>
                         ''')
-                        
-                        # SLOT ACCIONES (Botón Cobrar condicional)
-                        btn_cobrar = ''
-                        if es_admin:
-                            btn_cobrar = (
-                                '<q-btn v-if="props.row.estatus_detalle == \'Listo\'" '
-                                'icon="payments" size="sm" round color="green" '
-                                '@click="$parent.$emit(\'cobrar\', props.row)">'
-                                '<q-tooltip>Cobrar</q-tooltip></q-btn>'
-                            )
-                        
-                        # Definición del slot con botones
-                        slot_acc = f'''
+                        # SLOT ACCIONES (CON BOTÓN LINK AGREGADO 🔗)
+                        btn_c = '<q-btn v-if="props.row.estatus_detalle==\'Listo\'" icon="payments" size="sm" round color="green" @click="$parent.$emit(\'cobrar\', props.row)"><q-tooltip>Cobrar</q-tooltip></q-btn>' if es_admin else ''
+                        tabla_servicios.add_slot('body-cell-acciones', f'''
                             <q-td :props="props">
                                 <div class="flex items-center gap-1 justify-center">
-                                    <q-btn icon="edit_note" size="sm" flat round color="slate" @click="$parent.$emit('editar_items', props.row.id)"><q-tooltip>Modificar Ítems</q-tooltip></q-btn>
-                                    
-                                    <q-btn icon="print" size="sm" flat round color="red" @click="$parent.$emit('ver_pdf', props.row.id)"><q-tooltip>Ver Nota</q-tooltip></q-btn>
-                                    <q-btn icon="post_add" size="sm" flat round color="indigo" @click="$parent.$emit('add_serv', props.row.id)"><q-tooltip>Mano Obra</q-tooltip></q-btn>
-                                    <q-btn icon="inventory_2" size="sm" flat round color="orange" @click="$parent.$emit('add_ref', props.row.id)"><q-tooltip>Refacción</q-tooltip></q-btn>
-                                    <q-btn icon="email" size="sm" flat round color="blue" @click="$parent.$emit('email', props.row.id)"><q-tooltip>Enviar por Correo</q-tooltip></q-btn>
-                                    {btn_cobrar}
+                                    <q-btn icon="edit_note" size="sm" flat round color="slate" @click="$parent.$emit('edit', props.row.id)"><q-tooltip>Editar</q-tooltip></q-btn>
+                                    <q-btn icon="print" size="sm" flat round color="red" @click="$parent.$emit('pdf', props.row.id)"><q-tooltip>PDF</q-tooltip></q-btn>
+                                    <q-btn icon="post_add" size="sm" flat round color="indigo" @click="$parent.$emit('serv', props.row.id)"><q-tooltip>+MO</q-tooltip></q-btn>
+                                    <q-btn icon="inventory_2" size="sm" flat round color="orange" @click="$parent.$emit('ref', props.row.id)"><q-tooltip>+Ref</q-tooltip></q-btn>
+                                    <q-btn icon="link" size="sm" flat round color="teal" @click="$parent.$emit('link', props.row.uuid_publico)"><q-tooltip>Copiar Link</q-tooltip></q-btn>
+                                    <q-btn icon="email" size="sm" flat round color="blue" @click="$parent.$emit('email', props.row.id)"><q-tooltip>Enviar</q-tooltip></q-btn>
+                                    {btn_c}
                                 </div>
                             </q-td>
-                        '''
-                        tabla_servicios.add_slot('body-cell-acciones', slot_acc)
-                        tabla_servicios.on('editar_items', lambda e: cargar_editor_items(e.args))
+                        ''')
+                        tabla_servicios.on('edit', lambda e: load_items(e.args))
+                        tabla_servicios.on('pdf', lambda e: previsualizar_documento(e.args, False))
+                        tabla_servicios.on('serv', lambda e: abrir_add_serv(e.args))
+                        tabla_servicios.on('ref', lambda e: abrir_add_ref(e.args))
+                        tabla_servicios.on('link', lambda e: copiar_link_tracker(e.args)) # <--- Handler del link
                         tabla_servicios.on('email', lambda e: enviar_nota_por_correo(e.args))
-                        
-                        # Eventos de la tabla
-                        tabla_servicios.on('link', lambda e: (ui.clipboard.write(f"https://app.tregal.com.mx/status/{e.args}"), ui.notify('Link copiado')))
-                        # AQUÍ LA CLAVE: es_cotizacion=False para Nota de Mostrador
-                        tabla_servicios.on('ver_pdf', lambda e: previsualizar_documento(e.args, es_cotizacion=False))
-                        tabla_servicios.on('add_serv', lambda e: abrir_agregar_servicio(e.args))
-                        tabla_servicios.on('add_ref', lambda e: abrir_refaccion(e.args))
                         tabla_servicios.on('cambiar_status', lambda e: cambiar_estatus_flujo(e.args['id'], e.args['st']))
-                        if es_admin: tabla_servicios.on('cobrar', lambda e: abrir_cierre(e.args))
+                        if es_admin: tabla_servicios.on('cobrar', lambda e: abrir_cobro(e.args))
 
-                    # --- TAB 2: COTIZACIONES ---
                     if es_admin:
                         with ui.tab_panel(tab_cots):
-                            cols_cot = [
-                                {'name': 'fecha', 'label': 'Fecha', 'field': 'fecha', 'sortable': True},
-                                {'name': 'modelo', 'label': 'Auto', 'field': 'modelo', 'classes': 'font-bold'},
-                                {'name': 'dueno', 'label': 'Cliente', 'field': 'dueno_nombre'},
-                                {'name': 'total', 'label': 'Estimado', 'field': 'costo_fmt', 'classes': 'text-orange-600 font-bold'},
-                                {'name': 'acciones', 'label': 'Gestión', 'field': 'acciones', 'align': 'center'}
-                            ]
-                            tabla_cotizaciones = ui.table(columns=cols_cot, rows=[], row_key='id', pagination=10).classes('w-full')
-                            
+                            cols_cot = [{'name': 'modelo', 'label': 'Auto', 'field': 'modelo'}, {'name': 'dueno', 'label': 'Cliente', 'field': 'dueno_nombre'}, {'name': 'total', 'label': 'Total', 'field': 'costo_fmt'}, {'name': 'acciones', 'label': 'Acciones', 'field': 'acciones'}]
+                            tabla_cotizaciones = ui.table(columns=cols_cot, rows=[], row_key='id').classes('w-full')
                             tabla_cotizaciones.add_slot('body-cell-acciones', r'''
                                 <q-td :props="props">
-                                    <q-btn label="Editar" icon="edit" size="sm" flat color="grey" @click="$parent.$emit('add_serv', props.row.id)" />
-                                    <q-btn label="PDF" icon="print" size="sm" flat color="red" @click="$parent.$emit('ver_pdf', props.row.id)" />
-                                    <q-btn label="Aprobar" icon="check_circle" size="sm" color="green" @click="$parent.$emit('aprobar', props.row.id)" />
+                                    <q-btn icon="edit" size="sm" flat @click="$parent.$emit('serv', props.row.id)" />
+                                    <q-btn icon="print" size="sm" flat color="red" @click="$parent.$emit('pdf', props.row.id)" />
+                                    <q-btn icon="check_circle" size="sm" color="green" @click="$parent.$emit('ok', props.row.id)" />
                                 </q-td>
                             ''')
-                            
-                            tabla_cotizaciones.on('add_serv', lambda e: abrir_agregar_servicio(e.args))
-                            # AQUÍ LA CLAVE: es_cotizacion=True
-                            tabla_cotizaciones.on('ver_pdf', lambda e: previsualizar_documento(e.args, es_cotizacion=True))
-                            tabla_cotizaciones.on('aprobar', lambda e: aprobar_cotizacion(e.args))
+                            tabla_cotizaciones.on('serv', lambda e: abrir_add_serv(e.args))
+                            tabla_cotizaciones.on('pdf', lambda e: previsualizar_documento(e.args, True))
+                            tabla_cotizaciones.on('ok', lambda e: aprobar_cotizacion(e.args))
 
-    # Carga inicial de datos
     ui.timer(0.1, actualizar_tablas, once=True)
-    # 2. Refresco automático cada 5 segundos (Polling)
-    # Esto mantiene el tablero sincronizado si hay varios usuarios conectados
     ui.timer(5.0, actualizar_tablas)

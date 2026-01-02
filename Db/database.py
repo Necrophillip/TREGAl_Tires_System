@@ -2,7 +2,7 @@ import sqlite3
 import sys
 import os
 import secrets
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import List, Dict
 from collections import Counter
 
@@ -439,11 +439,31 @@ def actualizar_estatus_servicio(sid, est):
     conn.cursor().execute("UPDATE servicios SET estatus_detalle=?, uuid_publico=COALESCE(uuid_publico, ?) WHERE id=?", (est, uuid, sid)); conn.commit(); conn.close()
 
 def obtener_info_publica_servicio(uuid):
-    conn = sqlite3.connect(DB_NAME); conn.row_factory = sqlite3.Row
-    row = conn.cursor().execute("SELECT s.estatus_detalle, s.fecha, v.modelo, v.placas FROM servicios s JOIN vehiculos v ON s.vehiculo_id=v.id WHERE s.uuid_publico=?", (uuid,)).fetchone(); conn.close()
-    return dict(row) if row else None
+    conn = sqlite3.connect(DB_NAME)
+    conn.row_factory = sqlite3.Row
+    
+    # CONSULTA RECUPERADA (Con JOIN trabajadores y costo)
+    sql = """
+        SELECT 
+            s.estatus_detalle, s.fecha, s.costo_estimado,
+            v.modelo, v.placas, v.color,
+            t.nombre as mecanico
+        FROM servicios s 
+        JOIN vehiculos v ON s.vehiculo_id=v.id 
+        LEFT JOIN trabajadores t ON s.tecnico_asignado_id = t.id
+        WHERE s.uuid_publico=?
+    """
+    
+    row = conn.cursor().execute(sql, (uuid,)).fetchone()
+    conn.close()
+    
+    if row:
+        d = dict(row)
+        # Si la orden es MUY vieja y de verdad no tenía técnico, ponemos fallback
+        if not d['mecanico']: d['mecanico'] = "Equipo TREGAL"
+        return d
+    return None
 
-# --- AGREGAR EN database.py ---
 
 def obtener_items_editables(sid):
     """Obtiene los ítems con sus IDs reales para poder borrarlos"""
@@ -505,20 +525,20 @@ def eliminar_item_orden(tipo, item_id, servicio_id):
 
 def obtener_datos_completos_pdf(sid):
     conn = sqlite3.connect(DB_NAME)
-    conn.row_factory = sqlite3.Row
+    conn.row_factory = sqlite3.Row 
     cur = conn.cursor()
     
-    # CONSULTA CORREGIDA: Ahora incluye 't.nombre as mecanico' 👇
+    # CONSULTA RECUPERADA (Con JOIN trabajadores)
     sql = """
         SELECT 
             s.id, s.fecha, 
             c.nombre as cliente, c.telefono, 
             v.modelo, v.anio, v.placas, v.color, v.num_economico, v.vin, v.kilometraje,
-            t.nombre as mecanico 
+            t.nombre as mecanico
         FROM servicios s 
         JOIN vehiculos v ON s.vehiculo_id=v.id 
-        JOIN clientes c ON v.cliente_id=c.id 
-        LEFT JOIN trabajadores t ON s.tecnico_asignado_id = t.id 
+        JOIN clientes c ON v.cliente_id=c.id
+        LEFT JOIN trabajadores t ON s.tecnico_asignado_id = t.id
         WHERE s.id=?
     """
     
@@ -529,18 +549,12 @@ def obtener_datos_completos_pdf(sid):
         return None
         
     d = dict(head)
-    
-    # Si por alguna razón es None, ponemos un texto por defecto
-    if not d['mecanico']:
-        d['mecanico'] = "Por Asignar"
+    if not d['mecanico']: d['mecanico'] = "Por Asignar"
 
     d['items'] = []
-    
-    # Recuperamos mano de obra
+    # Recuperar mano de obra y refacciones (se mantiene igual)
     for r in cur.execute("SELECT descripcion_tarea, costo_cobrado FROM servicio_detalles WHERE servicio_id=?", (sid,)):
         d['items'].append({'cantidad':1, 'descripcion':r[0], 'tipo':'MO', 'unitario':r[1], 'total':r[1]})
-        
-    # Recuperamos refacciones
     for r in cur.execute("SELECT i.descripcion, sr.cantidad, sr.precio_unitario, sr.subtotal FROM servicio_refacciones sr JOIN inventario i ON sr.inventario_id=i.id WHERE sr.servicio_id=?", (sid,)):
         d['items'].append({'cantidad':r[1], 'descripcion':r[0], 'tipo':'Ref', 'unitario':r[2], 'total':r[3]})
         
@@ -602,7 +616,6 @@ def obtener_conteo_estados_servicios():
     conn = sqlite3.connect(DB_NAME); rows = conn.cursor().execute("SELECT estado, COUNT(*) FROM servicios GROUP BY estado").fetchall(); conn.close()
     return [{"name": r[0], "value": r[1]} for r in rows]
 
-# RC4
 
 def obtener_resumen_financiero(fecha_inicio: str, fecha_fin: str):
     """
@@ -665,3 +678,160 @@ def obtener_detalle_ventas(fecha_inicio: str, fecha_fin: str):
     rows = [dict(r) for r in cursor.fetchall()]
     conn.close()
     return rows
+# --- Major Realease 2026: KPIS dinamicos---
+
+def obtener_kpis_dashboard():
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+    hoy = datetime.now().strftime("%Y-%m-%d")
+    
+    # 1. Ventas del Día
+    res_ventas = cursor.execute("SELECT SUM(costo_final) FROM servicios WHERE estado='Terminado' AND fecha_cierre LIKE ?", (f'{hoy}%',)).fetchone()
+    ventas_hoy = res_ventas[0] or 0.0
+
+    # 2. Autos en Proceso (Total activos)
+    res_autos = cursor.execute("SELECT COUNT(*) FROM servicios WHERE estado != 'Terminado' AND tipo_doc = 'Orden'").fetchone()
+    autos_activos = res_autos[0] or 0
+
+    # 3. Autos LISTOS para Entrega (NUEVO KPI) 🚦
+    # Contamos los que dicen 'Listo' en estatus_detalle
+    res_listos = cursor.execute("SELECT COUNT(*) FROM servicios WHERE estatus_detalle = 'Listo' AND estado != 'Terminado'").fetchone()
+    autos_listos = res_listos[0] or 0
+
+    # 4. Alertas Stock
+    min_stock = int(get_config_value('min_stock', 5))
+    res_stock = cursor.execute("SELECT COUNT(*) FROM inventario WHERE cantidad <= ?", (min_stock,)).fetchone()
+    alertas_stock = res_stock[0] or 0
+
+    conn.close()
+    
+    return {
+        "ventas": ventas_hoy,
+        "autos": autos_activos,
+        "listos": autos_listos, # <--- Nuevo dato
+        "alertas": alertas_stock
+    }
+# --- AGREGAR AL FINAL DE Db/database.py ---
+
+def obtener_datos_grafico_semanal():
+    """
+    Calcula el flujo de trabajo de los últimos 7 días.
+    Retorna una lista con: Día, Ingresos (Nuevas Órdenes) y Salidas (Terminados).
+    """
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+    
+    datos = []
+    hoy = datetime.now()
+    
+    # Iteramos los últimos 7 días hacia atrás
+    for i in range(6, -1, -1):
+        fecha_obj = hoy - timedelta(days=i)
+        dia_str = fecha_obj.strftime("%Y-%m-%d") # Para buscar en DB
+        label_dia = fecha_obj.strftime("%d/%m")    # Para mostrar en gráfica (Ej: 25/10)
+        
+        # 1. Contar Ingresos (Fecha de creación)
+        # Filtramos por fecha y que sea una 'Orden' (ignoramos cotizaciones)
+        ingresos = cursor.execute("""
+            SELECT COUNT(*) FROM servicios 
+            WHERE fecha LIKE ? AND tipo_doc = 'Orden'
+        """, (f'{dia_str}%',)).fetchone()[0]
+        
+        # 2. Contar Salidas (Fecha de cierre)
+        salidas = cursor.execute("""
+            SELECT COUNT(*) FROM servicios 
+            WHERE estado='Terminado' AND fecha_cierre LIKE ?
+        """, (f'{dia_str}%',)).fetchone()[0]
+        
+        datos.append({
+            "dia": label_dia,
+            "ingresos": ingresos,
+            "salidas": salidas
+        })
+        
+    conn.close()
+    return datos
+# --- AGREGAR AL FINAL DE Db/database.py ---
+
+def obtener_metricas_ventas_mensuales():
+    """
+    Compara las ventas cerradas de este mes vs el mes anterior.
+    Retorna: {'actual': 15000.0, 'anterior': 40000.0}
+    """
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+    
+    hoy = datetime.now()
+    mes_actual_str = hoy.strftime("%Y-%m") # Ej: "2023-10"
+    
+    # Calcular mes anterior (truco matemático con fechas)
+    primer_dia_este_mes = hoy.replace(day=1)
+    ultimo_dia_mes_anterior = primer_dia_este_mes - timedelta(days=1)
+    mes_anterior_str = ultimo_dia_mes_anterior.strftime("%Y-%m") # Ej: "2023-09"
+    
+    # 1. Ventas Mes Actual
+    res_act = cursor.execute("SELECT SUM(costo_final) FROM servicios WHERE estado='Terminado' AND fecha_cierre LIKE ?", (f'{mes_actual_str}%',)).fetchone()
+    v_actual = res_act[0] if res_act and res_act[0] else 0.0
+    
+    # 2. Ventas Mes Anterior
+    res_ant = cursor.execute("SELECT SUM(costo_final) FROM servicios WHERE estado='Terminado' AND fecha_cierre LIKE ?", (f'{mes_anterior_str}%',)).fetchone()
+    v_anterior = res_ant[0] if res_ant and res_ant[0] else 0.0
+    
+    conn.close()
+    return {"actual": v_actual, "anterior": v_anterior}
+
+def obtener_carga_tecnicos():
+    """
+    Cuenta cuántas Órdenes Activas tiene cada técnico.
+    """
+    conn = sqlite3.connect(DB_NAME)
+    sql = """
+        SELECT t.nombre, COUNT(s.id) as total
+        FROM servicios s
+        JOIN trabajadores t ON s.tecnico_asignado_id = t.id
+        WHERE s.estado != 'Terminado' AND s.tipo_doc = 'Orden'
+        GROUP BY t.nombre
+    """
+    rows = conn.cursor().execute(sql).fetchall()
+    conn.close()
+    # Formato para gráfica ECharts: [{'name': 'Juan', 'value': 5}, ...]
+    return [{"name": r[0], "value": r[1]} for r in rows]
+
+# --- AGREGAR AL FINAL DE Db/database.py ---
+
+def obtener_ticket_promedio_mensual():
+    """
+    Calcula el valor promedio de venta por auto en el mes actual.
+    """
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+    
+    mes_actual = datetime.now().strftime("%Y-%m")
+    
+    # Promedio de costos finales de servicios terminados este mes
+    res = cursor.execute("""
+        SELECT AVG(costo_final) FROM servicios 
+        WHERE estado='Terminado' AND fecha_cierre LIKE ?
+    """, (f'{mes_actual}%',)).fetchone()
+    
+    conn.close()
+    return res[0] if res and res[0] else 0.0
+
+def obtener_top_servicios():
+    """
+    Devuelve los 5 servicios (Mano de Obra) más frecuentes del mes.
+    """
+    conn = sqlite3.connect(DB_NAME)
+    # Contamos cuántas veces aparece cada descripción en los detalles
+    sql = """
+        SELECT descripcion_tarea, COUNT(*) as cantidad
+        FROM servicio_detalles
+        GROUP BY descripcion_tarea
+        ORDER BY cantidad DESC
+        LIMIT 5
+    """
+    rows = conn.cursor().execute(sql).fetchall()
+    conn.close()
+    
+    # Formato para gráfica: [{'name': 'Afinación', 'value': 10}, ...]
+    return [{"name": r[0], "value": r[1]} for r in rows]

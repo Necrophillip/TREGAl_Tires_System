@@ -1,127 +1,121 @@
 from nicegui import ui
 from Db import database as db
 
-# --- 1. CONFIGURACIÓN DE TRADUCCIÓN ROBUSTA ---
-# Ahora entiende tanto texto limpio (Nuevo) como emojis (Viejo)
-MAPA_ESTATUS = {
-    # Lo que guarda el Dashboard actual (Texto limpio)
-    'Recibido': 'Recibido',
-    'Diagnóstico': 'Diagnóstico',
-    'Piezas': 'Piezas',
-    'Reparación': 'Reparación',
-    'Listo': 'Listo',
-    'Entregado': 'Entregado',
-    
-    # Variaciones con Emojis (Por si acaso quedó alguno viejo)
-    '🔍 Diagnóstico': 'Diagnóstico',
-    '📦 Esperando Piezas': 'Piezas',
-    '🔧 Reparación': 'Reparación',
-    '✅ Listo p/Entrega': 'Listo',
-    '✅ PAGADO': 'Entregado' 
+# --- CONFIGURACIÓN VISUAL ---
+# Mapeo de colores y textos para cada estado
+CONFIG_ESTADOS = {
+    'Recibido':    {'color': 'slate',  'icon': 'garage',       'msg': 'Tu auto ha ingresado al taller.'},
+    'Diagnóstico': {'color': 'blue',   'icon': 'search',       'msg': 'Estamos evaluando los puntos de seguridad.'},
+    'Piezas':      {'color': 'orange', 'icon': 'inventory_2',  'msg': 'Esperando refacciones de alta calidad.'},
+    'Reparación':  {'color': 'indigo', 'icon': 'handyman',     'msg': 'Nuestros técnicos están trabajando en tu unidad.'},
+    'Listo':       {'color': 'green',  'icon': 'check_circle', 'msg': '¡Tu vehículo está listo! Puedes pasar a recogerlo.'},
+    'Entregado':   {'color': 'green',  'icon': 'done_all',     'msg': 'Servicio completado. ¡Gracias por tu confianza!'}
 }
 
-# El orden visual del Stepper
-PASOS_ORDENADOS = ['Recibido', 'Diagnóstico', 'Piezas', 'Reparación', 'Listo', 'Entregado']
+# Orden lógico del proceso
+PASOS_ORDENADOS = ['Recibido', 'Diagnóstico', 'Piezas', 'Reparación', 'Listo']
 
 def show_page(uuid_publico: str):
     
-    contenedor_dinamico = ui.column().classes('w-full items-center p-0')
-    estado_anterior = {'val': None} 
+    # Contenedor principal centrado y con fondo suave
+    # Usamos 'items-center' para que en PC se vea centrado tipo App móvil
+    contenedor = ui.column().classes('w-full min-h-screen items-center bg-gray-100 p-0 gap-0')
+    estado_previo = {'val': None}
 
-    async def actualizar_interfaz():
-        # 1. Consultar DB
+    async def refrescar_interfaz():
         datos = db.obtener_info_publica_servicio(uuid_publico)
         
+        # 1. Manejo de Error (Link inválido)
         if not datos:
-            if estado_anterior['val'] != 'error': # Evitar redibujar error infinitamente
-                contenedor_dinamico.clear()
-                with contenedor_dinamico:
-                    with ui.column().classes('h-screen justify-center items-center text-gray-400'):
-                        ui.icon('cloud_off', size='4em')
-                        ui.label('Enlace no encontrado.')
-                estado_anterior['val'] = 'error'
+            if estado_previo['val'] != 'error':
+                contenedor.clear()
+                with contenedor:
+                    with ui.column().classes('h-screen justify-center items-center text-gray-400 p-4 text-center'):
+                        ui.icon('broken_image', size='4em')
+                        ui.label('No encontramos este servicio.').classes('text-lg font-bold')
+                        ui.label('El enlace podría haber expirado.').classes('text-sm')
+                estado_previo['val'] = 'error'
             return
 
-        # 2. Traducir Estatus (Mapeo)
-        estatus_crudo = datos.get('estatus_detalle', 'Recibido')
-        estatus_limpio = MAPA_ESTATUS.get(estatus_crudo, 'Recibido') 
+        # 2. Normalización de Datos
+        estatus_raw = datos.get('estatus_detalle', 'Recibido')
+        # Limpieza simple por si vienen emojis antiguos en la DB
+        estatus = next((k for k in CONFIG_ESTADOS if k in estatus_raw), 'Recibido')
         
-        # DEBUG: Ver en consola qué está pasando (Solo para ti)
-        print(f"🔄 Tracker Check | DB: '{estatus_crudo}' -> Mapped: '{estatus_limpio}'")
+        # Si no ha cambiado nada, no redibujamos (ahorra batería al cliente)
+        if estatus == estado_previo['val']: return
+        estado_previo['val'] = estatus
 
-        # 3. Optimización: Si no cambió, no tocar la UI
-        if estatus_limpio == estado_anterior['val']:
-            return 
-        
-        estado_anterior['val'] = estatus_limpio
-        
-        # 4. Calcular índice
-        try:
-            indice_actual = PASOS_ORDENADOS.index(estatus_limpio)
-        except ValueError:
-            indice_actual = 0
+        # Configuración del estado actual
+        cfg = CONFIG_ESTADOS.get(estatus, CONFIG_ESTADOS['Recibido'])
+        indice_actual = PASOS_ORDENADOS.index(estatus) if estatus in PASOS_ORDENADOS else 0
+        mecanico = datos.get('mecanico') or 'Equipo TREGAL'
+        total_pagar = datos.get('costo_estimado', 0)
 
-        # 5. REDIBUJAR
-        contenedor_dinamico.clear()
-        
-        with contenedor_dinamico:
-            # HEADER
-            with ui.row().classes('w-full bg-slate-900 p-4 justify-center shadow-md'):
-                ui.icon('tire_repair', size='2em', color='white') 
-                ui.label('TREGAL Tracker').classes('text-xl font-bold text-white tracking-widest')
+        # 3. REDIBUJADO DE LA INTERFAZ
+        contenedor.clear()
+        with contenedor:
+            
+            # --- A. HEADER DE MARCA ---
+            with ui.row().classes('w-full bg-slate-900 p-4 justify-between items-center shadow-md'):
+                ui.label('TREGAL TIRES').classes('text-lg font-black text-white tracking-widest')
+                ui.icon('verified', color='green', size='sm')
 
-            # TARJETA INFO
-            with ui.card().classes('w-full max-w-md mt-6 p-6 shadow-sm border-t-4 border-blue-600 mx-4'):
-                ui.label(f"{datos['modelo']}").classes('text-2xl font-bold text-slate-800')
-                ui.label(f"Placas: {datos['placas']}").classes('text-md text-gray-500 font-mono bg-gray-100 px-2 rounded w-fit mt-1')
+            # --- B. TARJETA DE ESTADO (HERO) ---
+            with ui.card().classes('w-full max-w-md -mt-2 rounded-none rounded-b-xl shadow-lg p-6 bg-white z-10'):
+                # Icono animado del estado
+                with ui.row().classes(f'w-full justify-center mb-2'):
+                    with ui.element('div').classes(f'p-4 rounded-full bg-{cfg["color"]}-100'):
+                        ui.icon(cfg['icon'], size='3em', color=cfg['color'])
                 
-                ui.separator().classes('my-4')
-                
-                # Estatus Gigante
-                color = 'text-green-600' if estatus_limpio == 'Listo' else 'text-blue-600'
-                ui.label('Estatus Actual:').classes('text-xs font-bold text-gray-400 uppercase')
-                ui.label(estatus_limpio).classes(f'text-3xl font-black {color} transition-all duration-500')
-                
-                ui.label(f"Ingreso: {datos['fecha']}").classes('text-xs text-gray-400 mt-2')
+                # Texto de Estado
+                ui.label(estatus.upper()).classes(f'w-full text-center text-2xl font-black text-{cfg["color"]}-700 mb-1')
+                ui.label(cfg['msg']).classes('w-full text-center text-gray-500 text-sm leading-tight')
 
-            # STEPPER
-            with ui.card().classes('w-full max-w-md mt-4 p-4 shadow-sm mx-4'):
-                ui.label('Línea de Tiempo').classes('font-bold text-slate-700 mb-4')
-                
-                with ui.stepper().props('vertical flat color=blue').classes('w-full'):
-                    for i, paso in enumerate(PASOS_ORDENADOS):
-                        # Lógica visual de iconos
-                        if i < indice_actual:
-                            props = 'done icon=check color=green'
-                        elif i == indice_actual:
-                            props = 'active icon=edit color=blue'
-                        else:
-                            props = 'icon=fiber_manual_record color=grey-4'
-                        
-                        # Render del paso
-                        with ui.step(paso, title=paso).props(props):
-                            if i == indice_actual:
-                                ui.label('En proceso...').classes('text-xs text-blue-500 italic')
+                # Barra de Progreso
+                if estatus != 'Entregado':
+                    progreso = (indice_actual + 1) / len(PASOS_ORDENADOS)
+                    ui.linear_progress(progreso).props(f'color={cfg["color"]}').classes('mt-6 rounded-full h-2')
+                    ui.label(f'Paso {indice_actual + 1} de {len(PASOS_ORDENADOS)}').classes('w-full text-right text-xs text-gray-400 mt-1')
 
-            # FOOTER
-            with ui.column().classes('w-full max-w-md mt-8 p-4 items-center gap-2 mb-8'):
-                ui.button('WhatsApp Taller', icon='whatsapp', color='green').classes('w-full shadow-lg')
-                ui.label('TREGAL Tires & Services').classes('text-xs text-gray-300 mt-2')
-            with ui.column().classes('w-full max-w-md mt-8 p-4 items-center gap-2 mb-8'):
+            # --- C. DETALLES DEL VEHÍCULO ---
+            with ui.column().classes('w-full max-w-md p-4 gap-3'):
+                ui.label('DETALLES DEL SERVICIO').classes('text-xs font-bold text-gray-400 ml-1 mt-4')
                 
-                # 1. Leer número actualizado
-                telefono_taller = db.get_whatsapp_taller()
-                
-                # 2. Construir Link API WhatsApp
-                # Mensaje predefinido para que el cliente no tenga que escribir
-                mensaje = f"Hola, estoy consultando el estatus de mi vehículo (Folio: {datos.get('modelo', 'Auto')})"
-                link_wa = f"https://wa.me/{telefono_taller}?text={mensaje}"
-                
-                # 3. Botón con link dinámico
-                ui.button('WhatsApp Taller', icon='whatsapp', color='green', on_click=lambda: ui.open(link_wa, new_tab=True)).classes('w-full shadow-lg')
-                
-                ui.label('TREGAL Tires & Services').classes('text-xs text-gray-300 mt-2')
+                with ui.card().classes('w-full p-4 shadow-sm border border-gray-200 flex-row gap-4 items-center'):
+                    ui.icon('directions_car', size='2em', color='slate')
+                    with ui.column().classes('gap-0'):
+                        ui.label(datos['modelo']).classes('font-bold text-slate-800 text-lg leading-none')
+                        ui.label(f"Placas: {datos['placas']} • {datos.get('color', 'S/C')}").classes('text-sm text-gray-500 uppercase mt-1')
 
-    # Timer de actualización (cada 3 seg)
-    ui.timer(0.1, actualizar_interfaz, once=True)
-    ui.timer(3.0, actualizar_interfaz)
+                # Tarjeta del Mecánico (Toque Humano) 👨‍🔧
+                with ui.card().classes('w-full p-4 shadow-sm border border-gray-200 flex-row gap-4 items-center'):
+                    ui.avatar(icon='engineering', color='grey-2', text_color='slate-700')
+                    with ui.column().classes('gap-0'):
+                        ui.label('Técnico Asignado').classes('text-xs text-gray-400 uppercase font-bold')
+                        ui.label(mecanico).classes('font-bold text-slate-700')
+
+            # --- D. SECCIÓN DE PAGO (SOLO SI ESTÁ LISTO) 💰 ---
+            if estatus in ['Listo', 'Entregado']:
+                with ui.card().classes('w-full max-w-md mx-4 mb-4 bg-green-50 border border-green-200 p-4 items-center'):
+                    ui.label('TOTAL A PAGAR').classes('text-xs font-bold text-green-700 tracking-widest')
+                    ui.label(f"${total_pagar:,.2f}").classes('text-4xl font-black text-green-800 my-2')
+                    if estatus == 'Listo':
+                        ui.label('Puedes pasar a caja para retirar tu unidad.').classes('text-center text-xs text-green-600')
+
+            # --- E. FOOTER CON ACCIONES ---
+            with ui.column().classes('w-full max-w-md p-6 mt-auto gap-3'):
+                # Botón WhatsApp
+                telefono = db.get_whatsapp_taller()
+                msg_wa = f"Hola, vi en el portal que mi {datos['modelo']} está en *{estatus}*. ¿Me podrían dar más detalles?"
+                link_wa = f"https://wa.me/{telefono}?text={msg_wa}"
+                
+                ui.button('Contactar por WhatsApp', icon='whatsapp', on_click=lambda: ui.open(link_wa, new_tab=True)) \
+                    .classes('w-full bg-green-600 text-white font-bold h-12 shadow-md rounded-lg')
+                
+                ui.label('TREGAL Tires & Services © 2025').classes('text-xs text-gray-300 text-center w-full mt-4')
+
+    # Timer de actualización (Polling cada 5s)
+    # Se ejecuta al inicio (0.1s) y luego cíclicamente
+    ui.timer(0.1, refrescar_interfaz, once=True)
+    ui.timer(5.0, refrescar_interfaz)
