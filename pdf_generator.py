@@ -12,6 +12,7 @@ def generar_pdf_cotizacion(datos, dias_vigencia, titulo="COTIZACIÓN"):
     """
     Genera un PDF elegante para TREGAL Tires.
     Soporta cambio de título para Nota de Mostrador.
+    Ahora incluye el nombre del Mecánico asignado.
     """
     filename = f"Documento_{datos['id']}.pdf"
     
@@ -48,10 +49,10 @@ def generar_pdf_cotizacion(datos, dias_vigencia, titulo="COTIZACIÓN"):
     c.setFont("Helvetica-Bold", 14)
     c.drawRightString(width - 30, height - 70, f"#{datos['id']:04d}") 
 
-    # 2. DATOS DEL CLIENTE Y FECHAS
+    # 2. DATOS DEL CLIENTE, MECÁNICO Y FECHAS (MODIFICADO)
     y_bloque = height - 140
     
-    # Cliente
+    # --- Columna Izquierda: Cliente ---
     c.setFillColor(COLOR_PRIMARIO)
     c.setFont("Helvetica-Bold", 11)
     c.drawString(50, y_bloque, "CLIENTE:")
@@ -62,7 +63,19 @@ def generar_pdf_cotizacion(datos, dias_vigencia, titulo="COTIZACIÓN"):
     tel_str = datos['telefono'] if datos['telefono'] else "Sin teléfono"
     c.drawString(50, y_bloque - 30, tel_str)
 
-    # Vehículo
+    # --- NUEVO: Mecánico Asignado ---
+    # Usamos .get() por seguridad, si no viene el dato pone "Por Asignar"
+    mecanico = datos.get('mecanico') or "Por Asignar"
+    
+    c.setFillColor(COLOR_PRIMARIO)
+    c.setFont("Helvetica-Bold", 9)
+    c.drawString(50, y_bloque - 48, "Mecánico:") # Etiqueta en azul
+    
+    c.setFillColor(colors.black)
+    c.setFont("Helvetica", 9)
+    c.drawString(100, y_bloque - 48, mecanico)   # Nombre en negro
+
+    # --- Columna Derecha: Vehículo ---
     c.setFillColor(COLOR_PRIMARIO)
     c.setFont("Helvetica-Bold", 11)
     c.drawString(250, y_bloque, "VEHÍCULO:")
@@ -78,7 +91,7 @@ def generar_pdf_cotizacion(datos, dias_vigencia, titulo="COTIZACIÓN"):
     c.drawString(250, y_bloque - 40, f"No. Eco: {eco}  |  Kms: {kms}")
     c.drawString(250, y_bloque - 52, f"VIN: {vin_num}")
 
-    # Fechas
+    # --- Fechas (Extremo Derecho) ---
     fecha_emision = datetime.now()
     fecha_vence = fecha_emision + timedelta(days=dias_vigencia)
     
@@ -97,6 +110,7 @@ def generar_pdf_cotizacion(datos, dias_vigencia, titulo="COTIZACIÓN"):
         c.setFont("Helvetica", 10)
         c.drawRightString(width - 30, y_bloque - 50, fecha_vence.strftime("%d/%m/%Y"))
 
+    # Línea divisoria
     c.setStrokeColor(colors.lightgrey)
     c.line(50, y_bloque - 65, width - 30, y_bloque - 65)
 
@@ -158,7 +172,7 @@ def generar_pdf_cotizacion(datos, dias_vigencia, titulo="COTIZACIÓN"):
     c.drawCentredString(width / 2, 30, "¡GRACIAS POR SU PREFERENCIA!")
 
     c.save()
-    return filename  # <--- ¡AQUÍ ESTÁ LA CLAVE!
+    return filename
 
 # ==========================================
 # 2. REPORTE FINANCIERO GLOBAL

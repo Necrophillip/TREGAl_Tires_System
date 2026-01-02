@@ -503,17 +503,49 @@ def eliminar_item_orden(tipo, item_id, servicio_id):
     finally:
         conn.close()
 
-# Funciones PDF
 def obtener_datos_completos_pdf(sid):
-    conn = sqlite3.connect(DB_NAME); conn.row_factory = sqlite3.Row; cur = conn.cursor()
-    head = cur.execute("SELECT s.id, s.fecha, c.nombre as cliente, c.telefono, v.modelo, v.anio, v.placas, v.color, v.num_economico, v.vin, v.kilometraje FROM servicios s JOIN vehiculos v ON s.vehiculo_id=v.id JOIN clientes c ON v.cliente_id=c.id WHERE s.id=?", (sid,)).fetchone()
-    if not head: conn.close(); return None
-    d = dict(head); d['items'] = []
+    conn = sqlite3.connect(DB_NAME)
+    conn.row_factory = sqlite3.Row
+    cur = conn.cursor()
+    
+    # CONSULTA CORREGIDA: Ahora incluye 't.nombre as mecanico' 👇
+    sql = """
+        SELECT 
+            s.id, s.fecha, 
+            c.nombre as cliente, c.telefono, 
+            v.modelo, v.anio, v.placas, v.color, v.num_economico, v.vin, v.kilometraje,
+            t.nombre as mecanico 
+        FROM servicios s 
+        JOIN vehiculos v ON s.vehiculo_id=v.id 
+        JOIN clientes c ON v.cliente_id=c.id 
+        LEFT JOIN trabajadores t ON s.tecnico_asignado_id = t.id 
+        WHERE s.id=?
+    """
+    
+    head = cur.execute(sql, (sid,)).fetchone()
+    
+    if not head: 
+        conn.close()
+        return None
+        
+    d = dict(head)
+    
+    # Si por alguna razón es None, ponemos un texto por defecto
+    if not d['mecanico']:
+        d['mecanico'] = "Por Asignar"
+
+    d['items'] = []
+    
+    # Recuperamos mano de obra
     for r in cur.execute("SELECT descripcion_tarea, costo_cobrado FROM servicio_detalles WHERE servicio_id=?", (sid,)):
         d['items'].append({'cantidad':1, 'descripcion':r[0], 'tipo':'MO', 'unitario':r[1], 'total':r[1]})
+        
+    # Recuperamos refacciones
     for r in cur.execute("SELECT i.descripcion, sr.cantidad, sr.precio_unitario, sr.subtotal FROM servicio_refacciones sr JOIN inventario i ON sr.inventario_id=i.id WHERE sr.servicio_id=?", (sid,)):
         d['items'].append({'cantidad':r[1], 'descripcion':r[0], 'tipo':'Ref', 'unitario':r[2], 'total':r[3]})
-    conn.close(); return d
+        
+    conn.close()
+    return d
 
 def obtener_detalle_completo_servicio(sid):
     conn = sqlite3.connect(DB_NAME); conn.row_factory = sqlite3.Row; cur = conn.cursor()
