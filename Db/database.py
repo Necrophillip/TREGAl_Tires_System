@@ -835,3 +835,113 @@ def obtener_top_servicios():
     
     # Formato para gráfica: [{'name': 'Afinación', 'value': 10}, ...]
     return [{"name": r[0], "value": r[1]} for r in rows]
+
+# --- EN LA SECCIÓN DE IMPORTS ---
+import resend # Asegúrate de instalarlo: pip install resend
+
+# --- EN LA FUNCIÓN init_db() ---
+def init_db():
+    conn = sqlite3.connect(DB_NAME); cursor = conn.cursor()
+    # ... (tus tablas existentes) ...
+    
+    # NUEVA TABLA: Historial de Correos (Para evitar spam y logs de marketing)
+    cursor.execute('''CREATE TABLE IF NOT EXISTS email_logs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        cliente_id INTEGER,
+        fecha_envio TEXT,
+        tipo TEXT, -- 'Recordatorio', 'Promocion', 'Cotizacion'
+        asunto TEXT,
+        estatus TEXT -- 'Enviado', 'Error'
+    )''')
+    
+    # Configuración Default para Resend (Si no existe)
+    cursor.execute("INSERT OR IGNORE INTO configuracion (clave, valor) VALUES ('resend_api_key', '')")
+    cursor.execute("INSERT OR IGNORE INTO configuracion (clave, valor) VALUES ('email_remitente', 'Taller <onboarding@resend.dev>')") # Cambiar por tu dominio verificado
+    
+    conn.commit(); conn.close()
+
+# --- EN LA SECCIÓN DE CONFIGURACIÓN ---
+def get_resend_api_key(): return get_config_value('resend_api_key', '')
+def set_resend_api_key(val): set_config_value('resend_api_key', val)
+def get_email_remitente(): return get_config_value('email_remitente', 'onboarding@resend.dev')
+def set_email_remitente(val): set_config_value('email_remitente', val)
+
+# --- NUEVA SECCIÓN: LÓGICA DE EMAILS ---
+
+def registrar_envio_email(cid, tipo, asunto, estatus):
+    conn = sqlite3.connect(DB_NAME)
+    conn.cursor().execute("INSERT INTO email_logs (cliente_id, fecha_envio, tipo, asunto, estatus) VALUES (?, datetime('now'), ?, ?, ?)", (cid, tipo, asunto, estatus))
+    conn.commit(); conn.close()
+
+def verificar_recordatorio_reciente(cliente_id, dias_cooldown=30):
+    """Verifica si ya enviamos un recordatorio a este cliente recientemente"""
+    conn = sqlite3.connect(DB_NAME); cursor = conn.cursor()
+    limite = (datetime.now() - timedelta(days=dias_cooldown)).strftime("%Y-%m-%d")
+    res = cursor.execute("SELECT id FROM email_logs WHERE cliente_id=? AND tipo='Recordatorio' AND fecha_envio > ?", (cliente_id, limite)).fetchone()
+    conn.close()
+    return res is not None
+
+def enviar_email_resend(destinatario, asunto, html_body, cliente_id=None, tipo="General"):
+    """Función maestra para enviar correos"""
+    api_key = get_resend_api_key()
+    remitente = get_email_remitente()
+    
+    if not api_key: return False, "Falta API Key"
+    
+    resend.api_key = api_key
+    try:
+        params = {
+            "from": remitente,
+            "to": [destinatario],
+            "subject": asunto,
+            "html": html_body
+        }
+        email = resend.Emails.send(params)
+        
+        # Registrar en bitácora si se envió bien
+        if cliente_id:
+            registrar_envio_email(cliente_id, tipo, asunto, "Enviado")
+            
+        return True, email
+    except Exception as e:
+        if cliente_id:
+            registrar_envio_email(cliente_id, tipo, asunto, f"Error: {str(e)}")
+        return False, str(e)
+
+def procesar_recordatorios_automaticos():
+    """Busca clientes próximos a servicio y envía correos si no se les ha enviado ya."""
+    clientes = obtener_clientes() # Reutilizamos tu función existente
+    meses = get_meses_alerta()
+    limite_dias = meses * 30
+    aviso_inicio = limite_dias - 45 # Empezar a avisar 45 días antes
+    hoy = datetime.now()
+    enviados = 0
+    
+    for c in clientes:
+        # Solo clientes con email y servicio registrado
+        if c.get('email') and c.get('ultimo_servicio_fmt') != '-':
+            try:
+                dt = datetime.strptime(c['ultimo_servicio'][:10], "%Y-%m-%d")
+                delta = (hoy - dt).days
+                dias_restantes = limite_dias - delta
+                
+                # Si está en la ventana de aviso (ej. faltan entre 1 y 45 días)
+                if 0 < dias_restantes <= 45:
+                    # Verificar si ya le escribimos hace menos de 20 días para no ser molestos
+                    if not verificar_recordatorio_reciente(c['id'], dias_cooldown=20):
+                        
+                        # Construir HTML bonito
+                        html = f"""
+                        <h1>Hola {c['nombre']}</h1>
+                        <p>Notamos que tu vehículo está próximo a requerir su mantenimiento preventivo.</p>
+                        <p><strong>Fecha estimada:</strong> En {dias_restantes} días.</p>
+                        <p>Evita fallas y agenda tu cita hoy mismo.</p>
+                        <br>
+                        <p>Atte. El equipo de TREGAL Tires</p>
+                        """
+                        
+                        ok, _ = enviar_email_resend(c['email'], "Recordatorio de Servicio 🚗", html, c['id'], "Recordatorio")
+                        if ok: enviados += 1
+            except: pass
+            
+    return enviados
