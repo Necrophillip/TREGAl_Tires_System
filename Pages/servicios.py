@@ -65,14 +65,20 @@ def show():
 
             # Semáforo de Tiempo 🚦
             try:
-                fecha_str = str(r['fecha'])[:16] # Cortar segundos
+                fecha_str = str(r['fecha'])[:16] 
                 fecha_ingreso = datetime.strptime(fecha_str, "%Y-%m-%d %H:%M")
                 dias = (datetime.now() - fecha_ingreso).days
             except:
                 dias = 0
             
             r['dias_taller'] = dias
-            if dias < 3:
+            
+            # LÓGICA MEJORADA: Si ya está 'Listo', no mostrar urgencia (siempre verde)
+            if r['estatus_detalle'] == 'Listo':
+                r['clase_tiempo'] = 'text-blue-600 font-bold' # Azul = Terminado/Esperando entrega
+                r['icon_tiempo'] = 'check_circle'
+            # Si no está listo, aplicar semáforo normal
+            elif dias < 3:
                 r['clase_tiempo'] = 'text-green-600 font-bold'
                 r['icon_tiempo'] = 'sentiment_satisfied'
             elif dias < 6:
@@ -234,20 +240,65 @@ def show():
         sel_r.set_options(db.obtener_inventario_select()); sel_r.value=None; num_r.value=1
         d_ref.sid=sid; d_ref.open()
 
+    # MODAL DE COBRO (Corregido y Robusto)
     with ui.dialog() as d_cobro, ui.card().classes('w-96'):
-        ui.label('Cobrar').classes('text-xl font-bold text-green-700')
-        lbl_tot = ui.label().classes('text-2xl font-black self-center my-2')
-        sel_met = ui.select(['Efectivo', 'Tarjeta', 'Transferencia'], value='Efectivo', label='Método').classes('w-full')
-        txt_ref = ui.input('Referencia').classes('w-full')
-        sel_caj = ui.select(db.obtener_trabajadores_select(), label='Recibe').classes('w-full')
-        def cobro_click():
-            db.cerrar_servicio(d_cobro.sid, f"T-{d_cobro.sid}", sel_caj.value, d_cobro.monto, sel_met.value, txt_ref.value)
-            ui.notify('Cobrado', type='positive'); d_cobro.close(); actualizar_tablas()
-        ui.button('Confirmar', on_click=cobro_click).classes('w-full bg-green-700 text-white')
-    def abrir_cobro(row):
-        sel_caj.value = user_worker_id; d_cobro.sid=row['id']; d_cobro.monto=row['costo_estimado']
-        lbl_tot.text=row['costo_fmt']; d_cobro.open()
+        ui.label('Cobrar Servicio').classes('text-xl font-bold text-green-700')
+        
+        # Elementos UI
+        lbl_tot = ui.label().classes('text-4xl font-black self-center my-4 text-slate-800')
+        sel_met = ui.select(['Efectivo', 'Tarjeta', 'Transferencia'], value='Efectivo', label='Método de Pago').classes('w-full')
+        txt_ref = ui.input('Referencia / Notas').classes('w-full')
+        sel_caj = ui.select(db.obtener_trabajadores_select(), label='¿Quién Recibe?').classes('w-full')
 
+        async def cobro_click():
+            # Notificación de proceso
+            n = ui.notification('Procesando cobro...', spinner=True)
+            try:
+                # 1. Actualizar estatus visual a 'Entregado' (para liberar el semáforo)
+                db.actualizar_estatus_servicio(d_cobro.sid, 'Entregado')
+
+                # 2. Cerrar financieramente en base de datos
+                # Aseguramos que los valores existan, si no, usamos defaults
+                cajero = sel_caj.value if sel_caj.value else user_worker_id
+                metodo = sel_met.value if sel_met.value else 'Efectivo'
+                ref = txt_ref.value if txt_ref.value else ''
+
+                db.cerrar_servicio(
+                    d_cobro.sid, 
+                    f"T-{d_cobro.sid}", 
+                    cajero, 
+                    d_cobro.monto, 
+                    metodo, 
+                    ref
+                )
+                
+                n.dismiss()
+                ui.notify('✅ Servicio Cobrado y Cerrado', type='positive')
+                
+                # 3. Cerrar diálogo y refrescar tabla
+                d_cobro.close()
+                actualizar_tablas()
+                
+            except Exception as e:
+                n.dismiss()
+                ui.notify(f'Error al cobrar: {str(e)}', type='negative')
+                print(f"Error Cobro: {e}")
+
+        with ui.row().classes('w-full justify-end gap-2 mt-4'):
+            ui.button('Cancelar', on_click=d_cobro.close).props('flat color=red')
+            ui.button('CONFIRMAR COBRO', on_click=cobro_click).classes('bg-green-700 text-white')
+
+    # Función para abrir el modal (se mantiene igual, pero verifica que esté alineada)
+    def abrir_cobro(row):
+        sel_caj.value = user_worker_id # Preseleccionar al usuario actual
+        d_cobro.sid = row['id']
+        d_cobro.monto = row.get('costo_estimado', 0) or row.get('costo_final', 0) # Fallback seguro
+        
+        # Formato seguro de moneda
+        monto_fmt = f"${d_cobro.monto:,.2f}"
+        lbl_tot.text = monto_fmt
+        
+        d_cobro.open()
     with ui.dialog() as d_edit, ui.card().classes('w-[600px]'):
         with ui.row().classes('w-full justify-between'):
             ui.label('Editar Ítems').classes('text-xl font-bold'); ui.button(icon='close', on_click=d_edit.close).props('flat dense')
